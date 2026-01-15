@@ -8,18 +8,17 @@ export default function Home() {
   const router = useRouter()
 
   useEffect(() => {
-    checkSession()
-  }, [])
-
-  const checkSession = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    if (session) {
-      router.push('/dashboard')
-    } else {
-      router.push('/auth/login')
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        router.push('/dashboard')
+      } else {
+        router.push('/auth/login')
+      }
     }
-  }
+    checkSession()
+  }, [router])
 
   return (
     <div className="min-h-screen flex items-center justify-center">

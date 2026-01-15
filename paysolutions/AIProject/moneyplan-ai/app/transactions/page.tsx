@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Transaction } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
@@ -47,11 +47,7 @@ export default function TransactionsPage() {
     'อื่นๆ'
   ]
 
-  useEffect(() => {
-    loadTransactions()
-  }, [])
-
-  const loadTransactions = async () => {
+  const loadTransactions = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       router.push('/auth/login')
@@ -73,7 +69,11 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    loadTransactions()
+  }, [loadTransactions])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

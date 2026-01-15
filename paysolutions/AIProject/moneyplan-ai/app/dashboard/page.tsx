@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase, Profile, Transaction } from '@/lib/supabase'
@@ -21,18 +21,7 @@ export default function DashboardPage() {
   const [chartPeriod, setChartPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly')
   const [hoveredPoint, setHoveredPoint] = useState<{ label: string; income: number; expense: number; x: number; y: number } | null>(null)
 
-  useEffect(() => {
-    checkUser()
-  }, [])
-
-  useEffect(() => {
-    if (user) {
-      loadMonthData(selectedMonth)
-      loadAllTransactions()
-    }
-  }, [user, selectedMonth])
-
-  const checkUser = async () => {
+  const checkUser = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       router.push('/auth/login')
@@ -40,7 +29,7 @@ export default function DashboardPage() {
     }
     setUser(session.user)
     loadProfile(session.user.id)
-  }
+  }, [router])
 
   const loadProfile = async (userId: string) => {
     try {
@@ -62,7 +51,7 @@ export default function DashboardPage() {
     }
   }
 
-  const loadMonthData = async (month: Date) => {
+  const loadMonthData = useCallback(async (month: Date) => {
     if (!user) return
     
     try {
@@ -93,9 +82,9 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('Error loading month data:', error)
     }
-  }
+  }, [user])
 
-  const loadAllTransactions = async () => {
+  const loadAllTransactions = useCallback(async () => {
     if (!user) return
     
     try {
@@ -113,7 +102,18 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('Error loading all transactions:', error)
     }
-  }
+  }, [user])
+
+  useEffect(() => {
+    checkUser()
+  }, [checkUser])
+
+  useEffect(() => {
+    if (user) {
+      loadMonthData(selectedMonth)
+      loadAllTransactions()
+    }
+  }, [user, selectedMonth, loadMonthData, loadAllTransactions])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

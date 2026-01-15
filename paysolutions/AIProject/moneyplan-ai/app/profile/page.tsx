@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Profile, Transaction } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
@@ -26,11 +26,7 @@ export default function ProfilePage() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const initialProfileRef = useRef<Profile | null>(null)
 
-  useEffect(() => {
-    loadProfile()
-  }, [])
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       router.push('/auth/login')
@@ -81,7 +77,11 @@ export default function ProfilePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router, profile])
+
+  useEffect(() => {
+    loadProfile()
+  }, [loadProfile])
 
   const saveProfile = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -215,7 +215,7 @@ export default function ProfilePage() {
                   <p className="text-lg font-bold text-green-600 mb-1">
                     {totalIncome.toLocaleString('th-TH')} บาท
                   </p>
-                  <p className="text-xs text-green-600">คำนวณจากรายรับในหน้า "รายรับรายจ่าย"</p>
+                  <p className="text-xs text-green-600">คำนวณจากรายรับในหน้า &quot;รายรับรายจ่าย&quot;</p>
                 </div>
               </div>
               <div className="space-y-3">

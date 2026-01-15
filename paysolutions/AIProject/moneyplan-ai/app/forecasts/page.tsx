@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Forecast } from '@/lib/supabase'
 import { format, addMonths, startOfMonth } from 'date-fns'
@@ -13,11 +13,7 @@ export default function ForecastsPage() {
   const [saving, setSaving] = useState<{ [key: string]: boolean }>({})
   const saveTimeoutRef = useRef<{ [key: string]: NodeJS.Timeout }>({})
 
-  useEffect(() => {
-    loadForecasts()
-  }, [])
-
-  const loadForecasts = async () => {
+  const loadForecasts = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       router.push('/auth/login')
@@ -96,7 +92,11 @@ export default function ForecastsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router])
+
+  useEffect(() => {
+    loadForecasts()
+  }, [loadForecasts])
 
   const saveForecast = async (
     forecastId: string,
