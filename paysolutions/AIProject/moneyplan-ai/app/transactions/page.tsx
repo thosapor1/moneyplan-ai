@@ -182,6 +182,7 @@ export default function TransactionsPage() {
               type: formData.type,
               amount: amount,
               category: formData.category || null,
+              description: formData.description || null,
               date: formData.date,
             })
             .eq('id', editingTransaction.id)
@@ -216,6 +217,7 @@ export default function TransactionsPage() {
               type: formData.type,
               amount: amount,
               category: formData.category || null,
+              description: formData.description || null,
               date: formData.date,
             })
 

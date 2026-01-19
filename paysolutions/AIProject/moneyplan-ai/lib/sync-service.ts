@@ -22,26 +22,41 @@ export class SyncService {
   }
 
   async syncAll(): Promise<void> {
+    // Check online status again
+    this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
+    
     if (!this.isOnline || this.syncInProgress) {
+      console.log('[Sync Service] Skipping sync - online:', this.isOnline, 'inProgress:', this.syncInProgress)
       return
     }
 
     this.syncInProgress = true
+    console.log('[Sync Service] Starting sync...')
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) {
+        console.log('[Sync Service] No session found, skipping sync')
         this.syncInProgress = false
         return
       }
 
-      await Promise.all([
+      const results = await Promise.allSettled([
         this.syncTransactions(session.user.id),
         this.syncProfile(session.user.id),
         this.syncForecasts(session.user.id),
       ])
 
-      console.log('[Sync Service] All data synced successfully')
+      const successCount = results.filter(r => r.status === 'fulfilled').length
+      console.log(`[Sync Service] Sync completed: ${successCount}/${results.length} successful`)
+
+      // Show notification if in browser
+      if (typeof window !== 'undefined' && successCount > 0) {
+        const event = new CustomEvent('sync-complete', { 
+          detail: { successCount, totalCount: results.length } 
+        })
+        window.dispatchEvent(event)
+      }
     } catch (error) {
       console.error('[Sync Service] Sync error:', error)
     } finally {
@@ -60,26 +75,60 @@ export class SyncService {
 
       for (const transaction of userUnsynced) {
         try {
-          const { data, error } = await supabase
-            .from('transactions')
-            .insert({
-              user_id: transaction.user_id,
-              type: transaction.type,
-              amount: transaction.amount,
-              category: transaction.category || null,
-              description: transaction.description || null,
-              date: transaction.date,
-            })
-            .select()
-            .single()
+          let data: any = null
+          let error: any = null
+
+          // ถ้ามี id แสดงว่าเป็น transaction ที่มีอยู่แล้ว (update)
+          if (transaction.id) {
+            const result = await supabase
+              .from('transactions')
+              .update({
+                type: transaction.type,
+                amount: transaction.amount,
+                category: transaction.category || null,
+                description: transaction.description || null,
+                date: transaction.date,
+              })
+              .eq('id', transaction.id)
+              .select()
+              .single()
+
+            data = result.data
+            error = result.error
+          } else {
+            // ถ้าไม่มี id แสดงว่าเป็น transaction ใหม่ (insert)
+            const result = await supabase
+              .from('transactions')
+              .insert({
+                user_id: transaction.user_id,
+                type: transaction.type,
+                amount: transaction.amount,
+                category: transaction.category || null,
+                description: transaction.description || null,
+                date: transaction.date,
+              })
+              .select()
+              .single()
+
+            data = result.data
+            error = result.error
+          }
 
           if (error) throw error
 
-          if (data && transaction.temp_id) {
-            await offlineDB.markTransactionSynced(transaction.temp_id, data.id)
+          // Mark as synced
+          if (data) {
+            if (transaction.temp_id) {
+              // Transaction ใหม่ - ใช้ temp_id
+              await offlineDB.markTransactionSynced(transaction.temp_id, data.id)
+            } else if (transaction.id) {
+              // Transaction ที่ update - ใช้ id
+              await offlineDB.markTransactionSyncedById(transaction.id)
+            }
           }
         } catch (error) {
           console.error('[Sync Service] Failed to sync transaction:', error)
+          console.error('[Sync Service] Transaction data:', transaction)
           // Continue with next transaction
         }
       }

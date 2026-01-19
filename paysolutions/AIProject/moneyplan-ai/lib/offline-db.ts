@@ -64,6 +64,7 @@ class OfflineDB {
           transactionStore.createIndex('user_id', 'user_id', { unique: false })
           transactionStore.createIndex('date', 'date', { unique: false })
           transactionStore.createIndex('synced', 'synced', { unique: false })
+          transactionStore.createIndex('id', 'id', { unique: false })
         }
 
         if (!db.objectStoreNames.contains('profiles')) {
@@ -155,6 +156,38 @@ class OfflineDB {
           const putRequest = store.put(data)
           putRequest.onsuccess = () => resolve()
           putRequest.onerror = () => reject(putRequest.error)
+        } else {
+          resolve()
+        }
+      }
+      getRequest.onerror = () => reject(getRequest.error)
+    })
+  }
+
+  async markTransactionSyncedById(id: string): Promise<void> {
+    if (!this.db) await this.init()
+
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(['transactions'], 'readwrite')
+      const store = tx.objectStore('transactions')
+      const index = store.index('id')
+      const getRequest = index.getAll(id)
+
+      getRequest.onsuccess = () => {
+        const results = getRequest.result || []
+        if (results.length > 0) {
+          // Update all matching transactions (should be only one)
+          const promises = results.map((data) => {
+            return new Promise<void>((res, rej) => {
+              data.synced = true
+              const putRequest = store.put(data)
+              putRequest.onsuccess = () => res()
+              putRequest.onerror = () => rej(putRequest.error)
+            })
+          })
+          Promise.all(promises)
+            .then(() => resolve())
+            .catch(reject)
         } else {
           resolve()
         }
