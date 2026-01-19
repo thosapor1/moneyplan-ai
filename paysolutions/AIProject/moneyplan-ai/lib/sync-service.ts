@@ -197,7 +197,9 @@ export class SyncService {
       const unsynced = await offlineDB.getUnsyncedTransactions()
       console.log(`[Sync Service] 📦 Found ${unsynced.length} total unsynced transactions in IndexedDB`)
       
-      const userUnsynced = unsynced.filter((t) => t.user_id === userId)
+      // Filter by user_id (user_id is optional offline, will be injected during sync)
+      // Include transactions that either match userId or have no user_id (will be set during sync)
+      const userUnsynced = unsynced.filter((t) => !t.user_id || t.user_id === userId)
       console.log(`[Sync Service] 👤 Found ${userUnsynced.length} unsynced transactions for current user`)
 
       if (userUnsynced.length === 0) {
@@ -209,46 +211,80 @@ export class SyncService {
 
       for (const offlineTx of userUnsynced) {
         try {
-          // Map OfflineTransaction to DB format with all required fields
-          // CRITICAL: Always use authenticated userId, not from offline transaction
-          // CRITICAL: Always include created_at (required by schema)
+          // CRITICAL: Separate offline identity from DB identity
+          // - local_id (temp_xxx) is ONLY for IndexedDB, NEVER sent to Supabase
+          // - id (uuid) is ONLY from Supabase, set after successful sync
           
-          if (offlineTx.id) {
-            // UPDATE: Transaction exists in DB, update it
-            // Note: Only include fields that exist in DB schema
+          // Validate that id is a UUID (not a temp string)
+          // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+          const isValidUUID = (str: string | undefined): str is string => {
+            if (!str) return false
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+            return uuidRegex.test(str)
+          }
+          
+          // Check if this transaction already has a valid DB UUID (was synced before)
+          // If it has a valid UUID id, it means it exists in DB - we should UPDATE, not INSERT
+          const hasValidDbId = offlineTx.id && isValidUUID(offlineTx.id) && offlineTx.synced === false
+          
+          if (hasValidDbId && offlineTx.id) {
+            // UPDATE: Transaction exists in DB but was modified offline
+            // CRITICAL: offlineTx.id is a valid UUID at this point (validated above)
+            const dbId: string = offlineTx.id // TypeScript now knows this is a string
+            
             const updatePayload = {
               type: offlineTx.type,
-              amount: offlineTx.amount,
+              amount: Number(offlineTx.amount), // Ensure it's a number
               category: offlineTx.category || null,
               date: offlineTx.date,
             }
             
-            console.log(`[Sync Service] 🔄 Updating transaction ${offlineTx.id}:`, updatePayload)
+            console.log(`[Sync Service] 🔄 Updating existing transaction:`)
+            console.log(`[Sync Service] DB ID (UUID): ${dbId}`)
+            console.log(`[Sync Service] Local ID: ${offlineTx.local_id}`)
+            console.log(`[Sync Service] Update payload:`, JSON.stringify(updatePayload, null, 2))
             
             const result = await supabase
               .from('transactions')
               .update(updatePayload)
-              .eq('id', offlineTx.id)
+              .eq('id', dbId) // CRITICAL: Use DB UUID, never local_id
               .select()
               .single()
 
             if (result.error) {
-              console.error(`[Sync Service] ❌ Update failed for transaction ${offlineTx.id}:`, result.error)
+              console.error(`[Sync Service] ❌ Update failed for transaction ${dbId}:`, result.error)
+              console.error(`[Sync Service] Error details:`, {
+                code: result.error.code,
+                message: result.error.message,
+                details: result.error.details,
+                hint: result.error.hint,
+              })
               console.error(`[Sync Service] Update payload:`, JSON.stringify(updatePayload, null, 2))
               throw result.error
             }
 
-            console.log(`[Sync Service] ✅ Successfully updated transaction ${offlineTx.id}`)
+            console.log(`[Sync Service] ✅ Successfully updated transaction ${dbId}`)
             
             // Mark as synced
-            await offlineDB.markTransactionSyncedById(offlineTx.id)
-            console.log(`[Sync Service] ✅ Marked transaction ${offlineTx.id} as synced in IndexedDB`)
+            await offlineDB.markTransactionSyncedById(dbId)
+            console.log(`[Sync Service] ✅ Marked transaction ${dbId} as synced in IndexedDB`)
             
           } else {
-            // INSERT: New transaction - must include all required fields
-            // Ensure created_at exists (use offline value or current timestamp)
+            // INSERT: New transaction - has no DB ID yet
+            // CRITICAL: Never include id or local_id in insert payload
+            // CRITICAL: Always use authenticated userId (not from offline transaction)
+            // CRITICAL: Always include created_at
+            
             const createdAt = offlineTx.created_at || new Date().toISOString()
             
+            // Validate local_id exists
+            if (!offlineTx.local_id) {
+              console.error(`[Sync Service] ❌ Transaction missing local_id, skipping`)
+              throw new Error('Transaction missing local_id')
+            }
+            
+            // Map OfflineTransaction → DbTransaction explicitly
+            // Only include fields that exist in DB schema
             const insertPayload = {
               // REQUIRED: Always use authenticated userId (RLS requirement)
               user_id: userId,
@@ -256,15 +292,18 @@ export class SyncService {
               created_at: createdAt,
               // Required fields
               type: offlineTx.type,
-              amount: offlineTx.amount,
-              date: offlineTx.date,
+              amount: Number(offlineTx.amount), // Ensure it's a number
+              date: offlineTx.date, // Should be YYYY-MM-DD format
               // Optional fields (only include fields that exist in DB schema)
               category: offlineTx.category || null,
               // Note: 'description' field does not exist in transactions table schema
+              // Note: Never include 'id' (DB generates UUID)
+              // Note: Never include 'local_id' (offline-only)
             }
             
-            console.log(`[Sync Service] 📤 Inserting new transaction:`, JSON.stringify(insertPayload, null, 2))
-            console.log(`[Sync Service] Offline transaction temp_id: ${offlineTx.temp_id}`)
+            console.log(`[Sync Service] 📤 Inserting new transaction to Supabase:`)
+            console.log(`[Sync Service] Local ID: ${offlineTx.local_id}`)
+            console.log(`[Sync Service] Insert payload:`, JSON.stringify(insertPayload, null, 2))
             
             const result = await supabase
               .from('transactions')
@@ -275,24 +314,30 @@ export class SyncService {
             if (result.error) {
               console.error(`[Sync Service] ❌ Insert failed:`, result.error)
               console.error(`[Sync Service] Error code: ${result.error.code}, message: ${result.error.message}`)
+              console.error(`[Sync Service] Error details:`, result.error.details)
+              console.error(`[Sync Service] Error hint:`, result.error.hint)
               console.error(`[Sync Service] Insert payload:`, JSON.stringify(insertPayload, null, 2))
               console.error(`[Sync Service] Offline transaction:`, JSON.stringify(offlineTx, null, 2))
               throw result.error
             }
 
-            if (!result.data) {
-              throw new Error('Insert succeeded but no data returned')
+            if (!result.data || !result.data.id) {
+              throw new Error('Insert succeeded but no data or ID returned from Supabase')
             }
 
-            console.log(`[Sync Service] ✅ Successfully inserted transaction with ID: ${result.data.id}`)
+            const dbId = result.data.id // UUID from Supabase
+            console.log(`[Sync Service] ✅ Successfully inserted transaction`)
+            console.log(`[Sync Service] Local ID: ${offlineTx.local_id} → DB ID: ${dbId}`)
             console.log(`[Sync Service] Inserted data:`, JSON.stringify(result.data, null, 2))
             
-            // Mark as synced in IndexedDB using temp_id
-            if (offlineTx.temp_id) {
-              await offlineDB.markTransactionSynced(offlineTx.temp_id, result.data.id)
-              console.log(`[Sync Service] ✅ Marked transaction ${offlineTx.temp_id} as synced (new DB ID: ${result.data.id})`)
+            // Mark as synced in IndexedDB using local_id
+            // This updates the offline record with the DB UUID
+            if (offlineTx.local_id) {
+              await offlineDB.markTransactionSynced(offlineTx.local_id, dbId)
+              console.log(`[Sync Service] ✅ Marked transaction ${offlineTx.local_id} as synced (DB ID: ${dbId})`)
             } else {
-              console.warn(`[Sync Service] ⚠️ No temp_id found for synced transaction, cannot mark in IndexedDB`)
+              console.error(`[Sync Service] ❌ No local_id found for synced transaction, cannot mark in IndexedDB`)
+              throw new Error('Cannot mark transaction as synced: missing local_id')
             }
           }
         } catch (error: any) {
@@ -386,13 +431,22 @@ export class SyncService {
   }
 
   async saveTransactionOffline(transaction: OfflineTransaction): Promise<void> {
-    await offlineDB.saveTransaction(transaction)
+    // Ensure local_id exists (will be generated if not provided)
+    const txWithLocalId: OfflineTransaction = {
+      ...transaction,
+      local_id: transaction.local_id || `temp_${Date.now()}_${Math.random()}`,
+    }
+    
+    await offlineDB.saveTransaction(txWithLocalId)
 
     // Try to sync immediately if online
     if (this.isOnline) {
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        await this.syncTransactions(session.user.id)
+        // Trigger sync but don't wait (fire and forget)
+        this.syncTransactions(session.user.id).catch(err => {
+          console.error('[Sync Service] Immediate sync failed:', err)
+        })
       }
     }
   }

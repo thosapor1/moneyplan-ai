@@ -79,27 +79,32 @@ export default function TransactionsPage() {
       const onlineIds = new Set((data || []).map(t => t.id))
       
       // Merge online and offline transactions, avoiding duplicates
-      // Only include offline transactions that:
-      // 1. Are not synced yet
-      // 2. Don't have a real ID that matches an online transaction
-      const offlineToShow = unsyncedOffline.filter(t => {
-        // If it has a real ID, check if it's already in online data
-        if (t.id) {
-          return !onlineIds.has(t.id)
-        }
-        // If it only has temp_id, it's a new transaction that hasn't been synced
-        return true
-      }).map(t => ({
-        id: t.id || t.temp_id, // Use real ID if available, otherwise temp_id
-        user_id: t.user_id,
-        type: t.type,
-        amount: t.amount,
-        category: t.category,
-        description: t.description,
-        date: t.date,
-        created_at: t.created_at,
-        updated_at: t.updated_at,
-      }))
+      // CRITICAL: Only show offline transactions that haven't been synced
+      // CRITICAL: Use DB id for display, never local_id
+      const offlineToShow = unsyncedOffline
+        .filter(t => {
+          // If it has a DB id, check if it's already in online data
+          if (t.id) {
+            return !onlineIds.has(t.id)
+          }
+          // If no DB id, it's a new transaction that hasn't been synced
+          return true
+        })
+        .map(t => ({
+          // CRITICAL: Use DB id if available, otherwise use local_id for display
+          // But mark it so we know it's not synced yet
+          id: t.id || `local_${t.local_id}`, // Prefix local_id so we can identify it
+          user_id: t.user_id || session.user.id,
+          type: t.type,
+          amount: t.amount,
+          category: t.category,
+          description: t.description,
+          date: t.date,
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+          _isLocal: !t.id, // Flag to indicate this is local-only
+          _localId: t.local_id, // Store local_id for reference
+        }))
       
       const allTransactions = [
         ...(data || []),
@@ -341,15 +346,61 @@ export default function TransactionsPage() {
     if (!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบรายการนี้?')) return
 
     try {
-      const { error } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('id', id)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        alert('กรุณาเข้าสู่ระบบก่อน')
+        return
+      }
 
-      if (error) throw error
-      loadTransactions()
+      // CRITICAL: Check if this is a local-only transaction (not synced yet)
+      // If it starts with "local_", it's a local_id and we should delete from IndexedDB only
+      if (id.startsWith('local_')) {
+        const localId = id.replace('local_', '')
+        console.log(`[Transactions] Deleting local-only transaction: ${localId}`)
+        
+        // Delete from IndexedDB using local_id
+        await offlineDB.deleteTransactionByLocalId(localId)
+        console.log(`[Transactions] ✅ Deleted local transaction ${localId} from IndexedDB`)
+        
+        await loadTransactions()
+        return
+      }
+
+      // This is a real DB transaction - delete from Supabase
+      // CRITICAL: Only use real UUIDs, never local_id
+      console.log(`[Transactions] Deleting transaction from Supabase: ${id}`)
+      
+      if (navigator.onLine) {
+        const { error } = await supabase
+          .from('transactions')
+          .delete()
+          .eq('id', id) // id should be a UUID, not local_id
+
+        if (error) {
+          console.error(`[Transactions] Delete error:`, error)
+          throw error
+        }
+        
+        console.log(`[Transactions] ✅ Deleted transaction ${id} from Supabase`)
+      } else {
+        // If offline, mark for deletion in IndexedDB
+        // Find the transaction and mark it for deletion
+        const offlineTransactions = await offlineDB.getTransactions(session.user.id)
+        const txToDelete = offlineTransactions.find(t => t.id === id)
+        
+        if (txToDelete) {
+          // Mark as deleted (or actually delete if it's local-only)
+          if (txToDelete.local_id) {
+            await offlineDB.deleteTransactionByLocalId(txToDelete.local_id)
+          }
+          console.log(`[Transactions] ✅ Marked transaction ${id} for deletion (offline)`)
+        }
+      }
+      
+      await loadTransactions()
     } catch (error: any) {
-      alert('เกิดข้อผิดพลาด: ' + error.message)
+      console.error(`[Transactions] Delete failed:`, error)
+      alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถลบรายการได้'))
     }
   }
 

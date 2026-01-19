@@ -3,17 +3,26 @@ const DB_NAME = 'MoneyPlanAI'
 const DB_VERSION = 1
 
 export interface OfflineTransaction {
-  id?: string
-  user_id: string
+  // DB identity (only set after successful sync)
+  id?: string // UUID from Supabase (only present after sync)
+  
+  // Local identity (always present for offline records)
+  local_id: string // Local temp ID like "temp_123..." (never sent to Supabase)
+  
+  // User identity (optional offline, required for sync)
+  user_id?: string // User ID (optional offline, injected during sync)
+  
+  // Transaction data
   type: 'income' | 'expense'
   amount: number
   category?: string
-  description?: string
+  description?: string // Stored offline but not sent to DB (not in schema)
   date: string
   created_at?: string
   updated_at?: string
-  synced?: boolean
-  temp_id?: string // สำหรับ pending transactions
+  
+  // Sync state
+  synced?: boolean // true if successfully synced to Supabase
 }
 
 export interface OfflineProfile {
@@ -58,13 +67,14 @@ class OfflineDB {
         // Create object stores
         if (!db.objectStoreNames.contains('transactions')) {
           const transactionStore = db.createObjectStore('transactions', {
-            keyPath: 'temp_id',
-            autoIncrement: true,
+            keyPath: 'local_id', // Use local_id as primary key
+            autoIncrement: false, // We generate local_id ourselves
           })
           transactionStore.createIndex('user_id', 'user_id', { unique: false })
           transactionStore.createIndex('date', 'date', { unique: false })
           transactionStore.createIndex('synced', 'synced', { unique: false })
-          transactionStore.createIndex('id', 'id', { unique: false })
+          transactionStore.createIndex('id', 'id', { unique: false }) // DB UUID index
+          transactionStore.createIndex('local_id', 'local_id', { unique: true }) // Ensure local_id uniqueness
         }
 
         if (!db.objectStoreNames.contains('profiles')) {
@@ -98,10 +108,14 @@ class OfflineDB {
       const tx = this.db!.transaction(['transactions'], 'readwrite')
       const store = tx.objectStore('transactions')
 
-      const data = {
+      // Ensure local_id exists (generate if not provided)
+      // CRITICAL: local_id is for offline use only, never sent to Supabase
+      const data: OfflineTransaction = {
         ...transaction,
+        local_id: transaction.local_id || `temp_${Date.now()}_${Math.random()}`,
         synced: false,
-        temp_id: transaction.temp_id || `temp_${Date.now()}_${Math.random()}`,
+        // Do NOT set id here - it's only set after successful sync
+        // user_id is optional offline, will be injected during sync
       }
 
       const request = store.put(data)
@@ -153,24 +167,32 @@ class OfflineDB {
     })
   }
 
-  async markTransactionSynced(tempId: string, realId: string): Promise<void> {
+  /**
+   * Mark transaction as synced after successful insert to Supabase
+   * @param localId - The local_id (temp_xxx) from IndexedDB
+   * @param dbId - The UUID returned from Supabase
+   */
+  async markTransactionSynced(localId: string, dbId: string): Promise<void> {
     if (!this.db) await this.init()
 
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction(['transactions'], 'readwrite')
       const store = tx.objectStore('transactions')
-      const getRequest = store.get(tempId)
+      const getRequest = store.get(localId)
 
       getRequest.onsuccess = () => {
         const data = getRequest.result
         if (data) {
-          data.id = realId
+          // Store the DB UUID and mark as synced
+          // Keep local_id for reference but mark synced = true
+          data.id = dbId // DB UUID from Supabase
           data.synced = true
-          delete data.temp_id
+          // Keep local_id - don't delete it (useful for debugging)
           const putRequest = store.put(data)
           putRequest.onsuccess = () => resolve()
           putRequest.onerror = () => reject(putRequest.error)
         } else {
+          console.warn(`[Offline DB] Transaction with local_id ${localId} not found`)
           resolve()
         }
       }
@@ -207,6 +229,25 @@ class OfflineDB {
         }
       }
       getRequest.onerror = () => reject(getRequest.error)
+    })
+  }
+
+  /**
+   * Delete transaction by local_id (for local-only transactions)
+   */
+  async deleteTransactionByLocalId(localId: string): Promise<void> {
+    if (!this.db) await this.init()
+
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(['transactions'], 'readwrite')
+      const store = tx.objectStore('transactions')
+      const deleteRequest = store.delete(localId)
+
+      deleteRequest.onsuccess = () => {
+        console.log(`[Offline DB] Deleted transaction with local_id: ${localId}`)
+        resolve()
+      }
+      deleteRequest.onerror = () => reject(deleteRequest.error)
     })
   }
 
