@@ -207,64 +207,103 @@ export class SyncService {
 
       console.log(`[Sync Service] 🔄 Syncing ${userUnsynced.length} transactions to backend...`)
 
-      for (const transaction of userUnsynced) {
+      for (const offlineTx of userUnsynced) {
         try {
-          let data: any = null
-          let error: any = null
-
-          // ถ้ามี id แสดงว่าเป็น transaction ที่มีอยู่แล้ว (update)
-          if (transaction.id) {
+          // Map OfflineTransaction to DB format with all required fields
+          // CRITICAL: Always use authenticated userId, not from offline transaction
+          // CRITICAL: Always include created_at (required by schema)
+          
+          if (offlineTx.id) {
+            // UPDATE: Transaction exists in DB, update it
+            const updatePayload = {
+              type: offlineTx.type,
+              amount: offlineTx.amount,
+              category: offlineTx.category || null,
+              description: offlineTx.description || null,
+              date: offlineTx.date,
+            }
+            
+            console.log(`[Sync Service] 🔄 Updating transaction ${offlineTx.id}:`, updatePayload)
+            
             const result = await supabase
               .from('transactions')
-              .update({
-                type: transaction.type,
-                amount: transaction.amount,
-                category: transaction.category || null,
-                description: transaction.description || null,
-                date: transaction.date,
-              })
-              .eq('id', transaction.id)
+              .update(updatePayload)
+              .eq('id', offlineTx.id)
               .select()
               .single()
 
-            data = result.data
-            error = result.error
+            if (result.error) {
+              console.error(`[Sync Service] ❌ Update failed for transaction ${offlineTx.id}:`, result.error)
+              console.error(`[Sync Service] Update payload:`, JSON.stringify(updatePayload, null, 2))
+              throw result.error
+            }
+
+            console.log(`[Sync Service] ✅ Successfully updated transaction ${offlineTx.id}`)
+            
+            // Mark as synced
+            await offlineDB.markTransactionSyncedById(offlineTx.id)
+            console.log(`[Sync Service] ✅ Marked transaction ${offlineTx.id} as synced in IndexedDB`)
+            
           } else {
-            // ถ้าไม่มี id แสดงว่าเป็น transaction ใหม่ (insert)
+            // INSERT: New transaction - must include all required fields
+            // Ensure created_at exists (use offline value or current timestamp)
+            const createdAt = offlineTx.created_at || new Date().toISOString()
+            
+            const insertPayload = {
+              // REQUIRED: Always use authenticated userId (RLS requirement)
+              user_id: userId,
+              // REQUIRED: created_at must exist (NOT NULL constraint)
+              created_at: createdAt,
+              // Required fields
+              type: offlineTx.type,
+              amount: offlineTx.amount,
+              date: offlineTx.date,
+              // Optional fields
+              category: offlineTx.category || null,
+              description: offlineTx.description || null,
+            }
+            
+            console.log(`[Sync Service] 📤 Inserting new transaction:`, JSON.stringify(insertPayload, null, 2))
+            console.log(`[Sync Service] Offline transaction temp_id: ${offlineTx.temp_id}`)
+            
             const result = await supabase
               .from('transactions')
-              .insert({
-                user_id: transaction.user_id,
-                type: transaction.type,
-                amount: transaction.amount,
-                category: transaction.category || null,
-                description: transaction.description || null,
-                date: transaction.date,
-              })
+              .insert(insertPayload)
               .select()
               .single()
 
-            data = result.data
-            error = result.error
-          }
+            if (result.error) {
+              console.error(`[Sync Service] ❌ Insert failed:`, result.error)
+              console.error(`[Sync Service] Error code: ${result.error.code}, message: ${result.error.message}`)
+              console.error(`[Sync Service] Insert payload:`, JSON.stringify(insertPayload, null, 2))
+              console.error(`[Sync Service] Offline transaction:`, JSON.stringify(offlineTx, null, 2))
+              throw result.error
+            }
 
-          if (error) throw error
+            if (!result.data) {
+              throw new Error('Insert succeeded but no data returned')
+            }
 
-          // Mark as synced in IndexedDB
-          if (data) {
-            if (transaction.temp_id) {
-              // New transaction - use temp_id
-              await offlineDB.markTransactionSynced(transaction.temp_id, data.id)
-              console.log(`[Sync Service] ✅ Marked transaction ${transaction.temp_id} as synced (new ID: ${data.id})`)
-            } else if (transaction.id) {
-              // Updated transaction - use id
-              await offlineDB.markTransactionSyncedById(transaction.id)
-              console.log(`[Sync Service] ✅ Marked transaction ${transaction.id} as synced`)
+            console.log(`[Sync Service] ✅ Successfully inserted transaction with ID: ${result.data.id}`)
+            console.log(`[Sync Service] Inserted data:`, JSON.stringify(result.data, null, 2))
+            
+            // Mark as synced in IndexedDB using temp_id
+            if (offlineTx.temp_id) {
+              await offlineDB.markTransactionSynced(offlineTx.temp_id, result.data.id)
+              console.log(`[Sync Service] ✅ Marked transaction ${offlineTx.temp_id} as synced (new DB ID: ${result.data.id})`)
+            } else {
+              console.warn(`[Sync Service] ⚠️ No temp_id found for synced transaction, cannot mark in IndexedDB`)
             }
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error(`[Sync Service] ❌ Failed to sync transaction:`, error)
-          console.error(`[Sync Service] Transaction data:`, JSON.stringify(transaction, null, 2))
+          console.error(`[Sync Service] Error details:`, {
+            code: error?.code,
+            message: error?.message,
+            details: error?.details,
+            hint: error?.hint,
+          })
+          console.error(`[Sync Service] Offline transaction:`, JSON.stringify(offlineTx, null, 2))
           // Continue with next transaction - don't fail entire sync
         }
       }
