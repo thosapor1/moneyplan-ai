@@ -215,11 +215,11 @@ export class SyncService {
           
           if (offlineTx.id) {
             // UPDATE: Transaction exists in DB, update it
+            // Note: Only include fields that exist in DB schema
             const updatePayload = {
               type: offlineTx.type,
               amount: offlineTx.amount,
               category: offlineTx.category || null,
-              description: offlineTx.description || null,
               date: offlineTx.date,
             }
             
@@ -258,9 +258,9 @@ export class SyncService {
               type: offlineTx.type,
               amount: offlineTx.amount,
               date: offlineTx.date,
-              // Optional fields
+              // Optional fields (only include fields that exist in DB schema)
               category: offlineTx.category || null,
-              description: offlineTx.description || null,
+              // Note: 'description' field does not exist in transactions table schema
             }
             
             console.log(`[Sync Service] 📤 Inserting new transaction:`, JSON.stringify(insertPayload, null, 2))
