@@ -50,6 +50,15 @@ export class SyncService {
       const successCount = results.filter(r => r.status === 'fulfilled').length
       console.log(`[Sync Service] Sync completed: ${successCount}/${results.length} successful`)
 
+      // Clean up synced transactions from IndexedDB to avoid duplicates
+      if (successCount > 0) {
+        try {
+          await offlineDB.deleteSyncedTransactions()
+        } catch (error) {
+          console.error('[Sync Service] Error cleaning up synced transactions:', error)
+        }
+      }
+
       // Show notification if in browser
       if (typeof window !== 'undefined' && successCount > 0) {
         const event = new CustomEvent('sync-complete', { 

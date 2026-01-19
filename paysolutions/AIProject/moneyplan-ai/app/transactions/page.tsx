@@ -70,23 +70,39 @@ export default function TransactionsPage() {
         throw error
       }
 
-      // Get offline transactions
+      // Get offline transactions (only unsynced ones)
       const offlineTransactions = await offlineDB.getTransactions(session.user.id)
+      const unsyncedOffline = offlineTransactions.filter(t => !t.synced)
       
-      // Merge online and offline transactions
+      // Get online transaction IDs to avoid duplicates
+      const onlineIds = new Set((data || []).map(t => t.id))
+      
+      // Merge online and offline transactions, avoiding duplicates
+      // Only include offline transactions that:
+      // 1. Are not synced yet
+      // 2. Don't have a real ID that matches an online transaction
+      const offlineToShow = unsyncedOffline.filter(t => {
+        // If it has a real ID, check if it's already in online data
+        if (t.id) {
+          return !onlineIds.has(t.id)
+        }
+        // If it only has temp_id, it's a new transaction that hasn't been synced
+        return true
+      }).map(t => ({
+        id: t.id || t.temp_id, // Use real ID if available, otherwise temp_id
+        user_id: t.user_id,
+        type: t.type,
+        amount: t.amount,
+        category: t.category,
+        description: t.description,
+        date: t.date,
+        created_at: t.created_at,
+        updated_at: t.updated_at,
+      }))
+      
       const allTransactions = [
         ...(data || []),
-        ...offlineTransactions.filter(t => !t.synced).map(t => ({
-          id: t.temp_id,
-          user_id: t.user_id,
-          type: t.type,
-          amount: t.amount,
-          category: t.category,
-          description: t.description,
-          date: t.date,
-          created_at: t.created_at,
-          updated_at: t.updated_at,
-        }))
+        ...offlineToShow
       ]
 
       // Sort by date

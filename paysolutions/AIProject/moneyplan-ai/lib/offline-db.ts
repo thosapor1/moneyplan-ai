@@ -196,6 +196,41 @@ class OfflineDB {
     })
   }
 
+  async deleteSyncedTransactions(): Promise<void> {
+    if (!this.db) await this.init()
+
+    return new Promise((resolve, reject) => {
+      const tx = this.db!.transaction(['transactions'], 'readwrite')
+      const store = tx.objectStore('transactions')
+      const index = store.index('synced')
+      const getRequest = index.getAll(IDBKeyRange.only(true))
+
+      getRequest.onsuccess = () => {
+        const syncedTransactions = getRequest.result || []
+        if (syncedTransactions.length === 0) {
+          resolve()
+          return
+        }
+
+        const deletePromises = syncedTransactions.map((transaction) => {
+          return new Promise<void>((res, rej) => {
+            const deleteRequest = store.delete(transaction.temp_id)
+            deleteRequest.onsuccess = () => res()
+            deleteRequest.onerror = () => rej(deleteRequest.error)
+          })
+        })
+
+        Promise.all(deletePromises)
+          .then(() => {
+            console.log(`[Offline DB] Deleted ${syncedTransactions.length} synced transactions`)
+            resolve()
+          })
+          .catch(reject)
+      }
+      getRequest.onerror = () => reject(getRequest.error)
+    })
+  }
+
   // Profile
   async saveProfile(profile: OfflineProfile): Promise<void> {
     if (!this.db) await this.init()
