@@ -28,7 +28,7 @@ export default function DashboardPage() {
       return
     }
     setUser(session.user)
-    loadProfile(session.user.id)
+    // Don't call loadProfile here - it will be called in useEffect
   }, [router])
 
   const loadProfile = async (userId: string) => {
@@ -107,6 +107,12 @@ export default function DashboardPage() {
   useEffect(() => {
     checkUser()
   }, [checkUser])
+
+  useEffect(() => {
+    if (user) {
+      loadProfile(user.id)
+    }
+  }, [user])
 
   useEffect(() => {
     if (user) {

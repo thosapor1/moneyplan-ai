@@ -47,9 +47,16 @@ export default function ProfilePage() {
         initialProfileRef.current = data
       } else {
         // สร้าง profile ใหม่ถ้ายังไม่มี
-        const newProfile = {
-          ...profile,
+        const newProfile: Profile = {
           id: session.user.id,
+          monthly_debt_payment: 0,
+          fixed_expense: 0,
+          variable_expense: 0,
+          saving: 0,
+          investment: 0,
+          liquid_assets: 0,
+          total_assets: 0,
+          total_liabilities: 0,
         }
         setProfile(newProfile)
         initialProfileRef.current = newProfile
@@ -77,7 +84,7 @@ export default function ProfilePage() {
     } finally {
       setLoading(false)
     }
-  }, [router, profile])
+  }, [router])
 
   useEffect(() => {
     loadProfile()

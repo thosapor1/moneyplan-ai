@@ -59,38 +59,25 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Skip Supabase API calls - handle them separately
+  // Skip Supabase API calls - always go to network, don't cache
   if (url.hostname.includes('supabase.co')) {
-    // Use network-first strategy for API calls
+    // Network-only strategy for API calls - always fetch from server
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Cache successful responses
-          if (response.ok && url.protocol !== 'chrome-extension:' && url.protocol !== 'chrome:' && url.protocol !== 'moz-extension:') {
-            const responseClone = response.clone()
-            caches.open(RUNTIME_CACHE).then((cache) => {
-              cache.put(request, responseClone).catch((err) => {
-                // Ignore cache errors for unsupported schemes
-                console.log('[Service Worker] Cache put error (ignored):', err)
-              })
-            })
-          }
+          // Don't cache API responses - always get fresh data
           return response
         })
         .catch(() => {
-          // If offline, try to get from cache
-          return caches.match(request).then((cachedResponse) => {
-            if (cachedResponse) {
-              return cachedResponse
+          // If offline, return error response
+          return new Response(
+            JSON.stringify({ error: 'Offline', message: 'No internet connection' }),
+            {
+              status: 503,
+              statusText: 'Service Unavailable',
+              headers: { 'Content-Type': 'application/json' },
             }
-            // Return offline response
-            return new Response(
-              JSON.stringify({ error: 'Offline', cached: true }),
-              {
-                headers: { 'Content-Type': 'application/json' },
-              }
-            )
-          })
+          )
         })
     )
     return
