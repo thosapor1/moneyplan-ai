@@ -13,6 +13,7 @@ export default function TransactionsPage() {
   const router = useRouter()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
+  const [syncing, setSyncing] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
@@ -152,7 +153,26 @@ export default function TransactionsPage() {
   }, [router])
 
   useEffect(() => {
-    loadTransactions()
+    const initSync = async () => {
+      await loadTransactions()
+      
+      // Try to sync when page loads if online
+      if (navigator.onLine) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session) {
+            console.log('[Transactions] Attempting to sync on page load...')
+            await syncService.syncAll()
+            // Reload transactions after sync
+            await loadTransactions()
+          }
+        } catch (err) {
+          console.error('[Transactions] Sync error on page load:', err)
+        }
+      }
+    }
+    
+    initSync()
   }, [loadTransactions])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -355,6 +375,43 @@ export default function TransactionsPage() {
     setSelectedMonth(newMonth)
   }
 
+  const handleManualSync = async () => {
+    if (!navigator.onLine) {
+      alert('คุณกำลังออฟไลน์ กรุณาเชื่อมต่ออินเทอร์เน็ตก่อน')
+      return
+    }
+
+    setSyncing(true)
+    try {
+      console.log('[Transactions] Manual sync started...')
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        alert('กรุณาเข้าสู่ระบบก่อน')
+        return
+      }
+
+      // Check unsynced transactions
+      const unsynced = await offlineDB.getUnsyncedTransactions()
+      const userUnsynced = unsynced.filter((t) => t.user_id === session.user.id)
+      console.log(`[Transactions] Found ${userUnsynced.length} unsynced transactions`)
+
+      if (userUnsynced.length === 0) {
+        alert('ไม่มีข้อมูลที่ต้อง sync')
+        setSyncing(false)
+        return
+      }
+
+      await syncService.syncAll()
+      await loadTransactions()
+      alert(`ซิงค์ข้อมูลสำเร็จ ${userUnsynced.length} รายการ`)
+    } catch (error: any) {
+      console.error('[Transactions] Manual sync error:', error)
+      alert('เกิดข้อผิดพลาดในการ sync: ' + (error.message || 'ไม่ทราบสาเหตุ'))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const monthNames = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
   const currentMonthName = monthNames[selectedMonth.getMonth()]
   const currentYear = selectedMonth.getFullYear() + 543
@@ -421,23 +478,47 @@ export default function TransactionsPage() {
           </button>
         </div>
 
-        {/* Add Item Button */}
-        <button
-          onClick={() => {
-            setEditingTransaction(null)
-            setFormData({
-              type: 'expense',
-              amount: '',
-              category: '',
-              description: '',
-              date: format(new Date(), 'yyyy-MM-dd'),
-            })
-            setShowModal(true)
-          }}
-          className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg mb-4 font-medium hover:bg-blue-700"
-        >
-          + เพิ่มรายการ
-        </button>
+        {/* Add Item Button and Sync Button */}
+        <div className="space-y-2 mb-4">
+          <button
+            onClick={() => {
+              setEditingTransaction(null)
+              setFormData({
+                type: 'expense',
+                amount: '',
+                category: '',
+                description: '',
+                date: format(new Date(), 'yyyy-MM-dd'),
+              })
+              setShowModal(true)
+            }}
+            className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-700"
+          >
+            + เพิ่มรายการ
+          </button>
+          <button
+            onClick={handleManualSync}
+            disabled={syncing || !navigator.onLine}
+            className="w-full bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {syncing ? (
+              <>
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                กำลังซิงค์...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                ซิงค์ข้อมูล
+              </>
+            )}
+          </button>
+        </div>
 
         {/* Transactions List */}
         <div className="space-y-2">

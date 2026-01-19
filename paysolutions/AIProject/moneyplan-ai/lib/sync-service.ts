@@ -75,10 +75,17 @@ export class SyncService {
 
   async syncTransactions(userId: string): Promise<void> {
     try {
+      console.log('[Sync Service] Getting unsynced transactions...')
       const unsynced = await offlineDB.getUnsyncedTransactions()
+      console.log(`[Sync Service] Found ${unsynced.length} total unsynced transactions`)
+      
       const userUnsynced = unsynced.filter((t) => t.user_id === userId)
+      console.log(`[Sync Service] Found ${userUnsynced.length} unsynced transactions for user ${userId}`)
 
-      if (userUnsynced.length === 0) return
+      if (userUnsynced.length === 0) {
+        console.log('[Sync Service] No transactions to sync')
+        return
+      }
 
       console.log(`[Sync Service] Syncing ${userUnsynced.length} transactions...`)
 
