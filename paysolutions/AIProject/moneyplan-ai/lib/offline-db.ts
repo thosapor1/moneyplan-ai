@@ -7,7 +7,7 @@ export interface OfflineTransaction {
   user_id: string
   type: 'income' | 'expense'
   amount: number
-  category: string
+  category?: string
   description?: string
   date: string
   created_at?: string

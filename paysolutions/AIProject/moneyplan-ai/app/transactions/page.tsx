@@ -198,7 +198,7 @@ export default function TransactionsPage() {
             user_id: session.user.id,
             type: formData.type,
             amount: amount,
-            category: formData.category || null,
+            category: formData.category,
             description: formData.description,
             date: formData.date,
           })
@@ -230,7 +230,7 @@ export default function TransactionsPage() {
             user_id: session.user.id,
             type: formData.type,
             amount: amount,
-            category: formData.category || null,
+            category: formData.category,
             description: formData.description,
             date: formData.date,
           })
@@ -261,7 +261,7 @@ export default function TransactionsPage() {
             user_id: session.user.id,
             type: formData.type,
             amount: amount,
-            category: formData.category || null,
+            category: formData.category,
             description: formData.description,
             date: formData.date,
           })
