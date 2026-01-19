@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import AppLoader from '@/components/AppLoader'
 
 export default function Home() {
   const router = useRouter()
@@ -20,12 +21,5 @@ export default function Home() {
     checkSession()
   }, [router])
 
-  return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-gray-600">กำลังโหลด...</p>
-      </div>
-    </div>
-  )
+  return <AppLoader message="กำลังตรวจสอบการเข้าสู่ระบบ..." />
 }

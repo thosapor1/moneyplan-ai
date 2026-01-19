@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration'
+import AppInitializer from '@/components/AppInitializer'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -18,7 +20,12 @@ export const metadata: Metadata = {
     ],
   },
   themeColor: '#1f2937',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1',
+  viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'MoneyPlan AI',
+  },
 }
 
 export default function RootLayout({
@@ -28,7 +35,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="th">
-      <body className={inter.className}>{children}</body>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#1f2937" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="MoneyPlan AI" />
+      </head>
+      <body className={inter.className}>
+        <AppInitializer>
+          <ServiceWorkerRegistration />
+          {children}
+        </AppInitializer>
+      </body>
     </html>
   )
 }

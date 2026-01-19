@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Transaction } from '@/lib/supabase'
+import { syncService } from '@/lib/sync-service'
+import { offlineDB } from '@/lib/offline-db'
 import BottomNavigation from '@/components/BottomNavigation'
 import CategoryIcon from '@/components/CategoryIcon'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
@@ -18,6 +20,7 @@ export default function TransactionsPage() {
     type: 'expense' as 'income' | 'expense',
     amount: '',
     category: '',
+    description: '',
     date: format(new Date(), 'yyyy-MM-dd'),
   })
 
@@ -55,6 +58,7 @@ export default function TransactionsPage() {
     }
 
     try {
+      // Try to load from online first
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
@@ -62,14 +66,74 @@ export default function TransactionsPage() {
         .order('date', { ascending: false })
         .order('created_at', { ascending: false })
 
-      if (error) throw error
-      setTransactions(data || [])
+      if (error && navigator.onLine) {
+        throw error
+      }
+
+      // Get offline transactions
+      const offlineTransactions = await offlineDB.getTransactions(session.user.id)
+      
+      // Merge online and offline transactions
+      const allTransactions = [
+        ...(data || []),
+        ...offlineTransactions.filter(t => !t.synced).map(t => ({
+          id: t.temp_id,
+          user_id: t.user_id,
+          type: t.type,
+          amount: t.amount,
+          category: t.category,
+          description: t.description,
+          date: t.date,
+          created_at: t.created_at,
+          updated_at: t.updated_at,
+        }))
+      ]
+
+      // Sort by date
+      allTransactions.sort((a, b) => {
+        const dateA = new Date(a.date).getTime()
+        const dateB = new Date(b.date).getTime()
+        return dateB - dateA
+      })
+
+      setTransactions(allTransactions as Transaction[])
+
+      // Cache online data
+      if (data && navigator.onLine) {
+        await offlineDB.cacheData(`transactions_${session.user.id}`, data)
+      }
     } catch (error) {
       console.error('Error loading transactions:', error)
+      
+      // If offline, try to load from cache
+      if (!navigator.onLine) {
+        try {
+          const cached = await offlineDB.getCachedData(`transactions_${session.user.id}`)
+          if (cached) {
+            setTransactions(cached)
+          } else {
+            // Load from offline DB
+            const offlineTransactions = await offlineDB.getTransactions(session.user.id)
+            setTransactions(offlineTransactions.map(t => ({
+              id: t.temp_id,
+              user_id: t.user_id,
+              type: t.type,
+              amount: t.amount,
+              category: t.category,
+              description: t.description,
+              date: t.date,
+              created_at: t.created_at,
+              updated_at: t.updated_at,
+            })) as Transaction[])
+          }
+        } catch (offlineError) {
+          console.error('Error loading offline transactions:', offlineError)
+        }
+      }
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [router])
 
   useEffect(() => {
     loadTransactions()
@@ -105,42 +169,73 @@ export default function TransactionsPage() {
     }
 
     try {
+      const isOnline = navigator.onLine
+
       if (editingTransaction) {
         // อัปเดต
         console.log('Updating transaction:', editingTransaction.id)
-        const { error } = await supabase
-          .from('transactions')
-          .update({
-            type: formData.type,
-            amount: amount,
-            category: formData.category || null,
-            date: formData.date,
-          })
-          .eq('id', editingTransaction.id)
+        
+        if (isOnline) {
+          const { error } = await supabase
+            .from('transactions')
+            .update({
+              type: formData.type,
+              amount: amount,
+              category: formData.category || null,
+              date: formData.date,
+            })
+            .eq('id', editingTransaction.id)
 
-        if (error) {
-          console.error('Update error:', error)
-          throw error
-        }
-        console.log('Transaction updated successfully')
-      } else {
-        // สร้างใหม่
-        console.log('Creating new transaction')
-        const { error } = await supabase
-          .from('transactions')
-          .insert({
+          if (error) {
+            console.error('Update error:', error)
+            throw error
+          }
+          console.log('Transaction updated successfully')
+        } else {
+          // Save offline
+          await syncService.saveTransactionOffline({
+            id: editingTransaction.id,
             user_id: session.user.id,
             type: formData.type,
             amount: amount,
             category: formData.category || null,
+            description: formData.description,
             date: formData.date,
           })
-
-        if (error) {
-          console.error('Insert error:', error)
-          throw error
+          alert('บันทึกข้อมูลออฟไลน์แล้ว จะ sync อัตโนมัติเมื่อกลับมาออนไลน์')
         }
-        console.log('Transaction created successfully')
+      } else {
+        // สร้างใหม่
+        console.log('Creating new transaction')
+        
+        if (isOnline) {
+          const { error } = await supabase
+            .from('transactions')
+            .insert({
+              user_id: session.user.id,
+              type: formData.type,
+              amount: amount,
+              category: formData.category || null,
+              date: formData.date,
+            })
+
+          if (error) {
+            console.error('Insert error:', error)
+            throw error
+          }
+          console.log('Transaction created successfully')
+        } else {
+          // Save offline
+          await syncService.saveTransactionOffline({
+            user_id: session.user.id,
+            type: formData.type,
+            amount: amount,
+            category: formData.category || null,
+            description: formData.description,
+            date: formData.date,
+          })
+          alert('บันทึกข้อมูลออฟไลน์แล้ว จะ sync อัตโนมัติเมื่อกลับมาออนไลน์')
+        }
       }
 
       // Reset form and close modal
@@ -150,6 +245,7 @@ export default function TransactionsPage() {
         type: 'expense',
         amount: '',
         category: '',
+        description: '',
         date: format(new Date(), 'yyyy-MM-dd'),
       })
       
@@ -157,8 +253,38 @@ export default function TransactionsPage() {
       await loadTransactions()
     } catch (error: any) {
       console.error('Error saving transaction:', error)
-      alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถบันทึกข้อมูลได้'))
-      // ไม่ปิด modal ถ้ามี error เพื่อให้ผู้ใช้แก้ไขได้
+      
+      // If online error, try to save offline
+      if (navigator.onLine) {
+        try {
+          await syncService.saveTransactionOffline({
+            user_id: session.user.id,
+            type: formData.type,
+            amount: amount,
+            category: formData.category || null,
+            description: formData.description,
+            date: formData.date,
+          })
+          alert('บันทึกข้อมูลออฟไลน์แล้ว จะ sync อัตโนมัติเมื่อกลับมาออนไลน์')
+          
+          // Reset form and close modal
+          setEditingTransaction(null)
+          setShowModal(false)
+          setFormData({
+            type: 'expense',
+            amount: '',
+            category: '',
+            description: '',
+            date: format(new Date(), 'yyyy-MM-dd'),
+          })
+          
+          await loadTransactions()
+        } catch (offlineError) {
+          alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถบันทึกข้อมูลได้'))
+        }
+      } else {
+        alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถบันทึกข้อมูลได้'))
+      }
     }
   }
 
@@ -168,6 +294,7 @@ export default function TransactionsPage() {
       type: transaction.type,
       amount: transaction.amount.toString(),
       category: transaction.category || '',
+      description: (transaction as any).description || '',
       date: transaction.date,
     })
   }
@@ -195,6 +322,7 @@ export default function TransactionsPage() {
       type: 'expense',
       amount: '',
       category: '',
+      description: '',
       date: format(new Date(), 'yyyy-MM-dd'),
     })
   }
@@ -283,6 +411,7 @@ export default function TransactionsPage() {
               type: 'expense',
               amount: '',
               category: '',
+              description: '',
               date: format(new Date(), 'yyyy-MM-dd'),
             })
             setShowModal(true)
@@ -450,6 +579,8 @@ export default function TransactionsPage() {
                 </label>
                 <input
                   type="text"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder:text-gray-400"
                   placeholder="รายละเอียดเพิ่มเติม"
                 />
