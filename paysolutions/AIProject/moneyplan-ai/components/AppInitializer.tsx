@@ -45,18 +45,12 @@ export default function AppInitializer({ children }: { children: React.ReactNode
           }
         }
 
-        // Step 3: Check online status and sync
+        // Step 3: Check online status
         setInitMessage('กำลังตรวจสอบการเชื่อมต่อ...')
         setInitProgress(80)
         
-        if (navigator.onLine) {
-          // Try to sync if online
-          try {
-            await syncService.syncAll()
-          } catch (error) {
-            console.error('[Init] Sync error:', error)
-          }
-        }
+        // Note: Sync will be triggered by SyncService.initialize() in useEffect below
+        // This ensures sync happens after all initialization is complete
 
         // Step 4: Complete
         setInitMessage('พร้อมใช้งาน')
@@ -76,24 +70,26 @@ export default function AppInitializer({ children }: { children: React.ReactNode
     initializeApp()
   }, [])
 
-  // Setup online/offline listeners
+  // Initialize SyncService event listeners exactly once
+  // This ensures sync triggers on: online, visibility change, focus
   useEffect(() => {
-    const handleOnline = async () => {
-      console.log('[App] Back online, syncing...')
-      await syncService.syncAll()
+    console.log('[App Initializer] Setting up SyncService...')
+    syncService.initialize()
+    
+    // Also trigger initial sync if online and session is available
+    const triggerInitialSync = async () => {
+      if (navigator.onLine) {
+        // Small delay to ensure everything is initialized
+        setTimeout(() => {
+          console.log('[App Initializer] Triggering initial sync check...')
+          syncService.syncAll().catch(err => {
+            console.error('[App Initializer] Initial sync error:', err)
+          })
+        }, 1000)
+      }
     }
-
-    const handleOffline = () => {
-      console.log('[App] Gone offline')
-    }
-
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
+    
+    triggerInitialSync()
   }, [])
 
   if (isInitializing) {

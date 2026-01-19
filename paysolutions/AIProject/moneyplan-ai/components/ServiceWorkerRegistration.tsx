@@ -11,13 +11,16 @@ export default function ServiceWorkerRegistration() {
     // Check online status
     setIsOnline(navigator.onLine)
 
-    const handleOnline = async () => {
+    // Note: SyncService handles online/offline events via its own listeners
+    // We only update UI state here
+    const handleOnline = () => {
       setIsOnline(true)
-      // Trigger sync when back online
-      console.log('[SW Registration] Back online, triggering sync...')
-      await syncService.syncAll()
+      console.log('[SW Registration] Network online - SyncService will handle sync')
     }
-    const handleOffline = () => setIsOnline(false)
+    const handleOffline = () => {
+      setIsOnline(false)
+      console.log('[SW Registration] Network offline')
+    }
 
     // Listen for sync completion
     const handleSyncComplete = (event: CustomEvent) => {
