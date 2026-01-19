@@ -131,7 +131,7 @@ class OfflineDB {
       const tx = this.db!.transaction(['transactions'], 'readonly')
       const store = tx.objectStore('transactions')
       const index = store.index('synced')
-      const request = index.getAll(false)
+      const request = index.getAll(IDBKeyRange.only(false))
 
       request.onsuccess = () => resolve(request.result || [])
       request.onerror = () => reject(request.error)
@@ -261,7 +261,7 @@ class OfflineDB {
       const tx = this.db!.transaction(['forecasts'], 'readonly')
       const store = tx.objectStore('forecasts')
       const index = store.index('synced')
-      const request = index.getAll(false)
+      const request = index.getAll(IDBKeyRange.only(false))
 
       request.onsuccess = () => resolve(request.result || [])
       request.onerror = () => reject(request.error)
