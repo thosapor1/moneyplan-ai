@@ -131,10 +131,24 @@ class OfflineDB {
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction(['transactions'], 'readonly')
       const store = tx.objectStore('transactions')
-      const index = store.index('synced')
-      const request = index.getAll(IDBKeyRange.only(false))
+      
+      // Use openCursor to filter unsynced transactions
+      const request = store.openCursor()
+      const unsynced: OfflineTransaction[] = []
 
-      request.onsuccess = () => resolve(request.result || [])
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result
+        if (cursor) {
+          const transaction = cursor.value
+          // Check if synced is false or undefined
+          if (transaction.synced === false || transaction.synced === undefined) {
+            unsynced.push(transaction)
+          }
+          cursor.continue()
+        } else {
+          resolve(unsynced)
+        }
+      }
       request.onerror = () => reject(request.error)
     })
   }
@@ -202,32 +216,41 @@ class OfflineDB {
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction(['transactions'], 'readwrite')
       const store = tx.objectStore('transactions')
-      const index = store.index('synced')
-      const getRequest = index.getAll(IDBKeyRange.only(true))
+      
+      // Use openCursor to find and delete synced transactions
+      const request = store.openCursor()
+      const deletePromises: Promise<void>[] = []
 
-      getRequest.onsuccess = () => {
-        const syncedTransactions = getRequest.result || []
-        if (syncedTransactions.length === 0) {
-          resolve()
-          return
-        }
-
-        const deletePromises = syncedTransactions.map((transaction) => {
-          return new Promise<void>((res, rej) => {
-            const deleteRequest = store.delete(transaction.temp_id)
-            deleteRequest.onsuccess = () => res()
-            deleteRequest.onerror = () => rej(deleteRequest.error)
-          })
-        })
-
-        Promise.all(deletePromises)
-          .then(() => {
-            console.log(`[Offline DB] Deleted ${syncedTransactions.length} synced transactions`)
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result
+        if (cursor) {
+          const transaction = cursor.value
+          // Check if synced is true
+          if (transaction.synced === true) {
+            const deletePromise = new Promise<void>((res, rej) => {
+              const deleteRequest = cursor.delete()
+              deleteRequest.onsuccess = () => res()
+              deleteRequest.onerror = () => rej(deleteRequest.error)
+            })
+            deletePromises.push(deletePromise)
+          }
+          cursor.continue()
+        } else {
+          // All cursors processed, now delete
+          if (deletePromises.length === 0) {
             resolve()
-          })
-          .catch(reject)
+            return
+          }
+          
+          Promise.all(deletePromises)
+            .then(() => {
+              console.log(`[Offline DB] Deleted ${deletePromises.length} synced transactions`)
+              resolve()
+            })
+            .catch(reject)
+        }
       }
-      getRequest.onerror = () => reject(getRequest.error)
+      request.onerror = () => reject(request.error)
     })
   }
 
@@ -328,10 +351,24 @@ class OfflineDB {
     return new Promise((resolve, reject) => {
       const tx = this.db!.transaction(['forecasts'], 'readonly')
       const store = tx.objectStore('forecasts')
-      const index = store.index('synced')
-      const request = index.getAll(IDBKeyRange.only(false))
+      
+      // Use openCursor to filter unsynced forecasts
+      const request = store.openCursor()
+      const unsynced: OfflineForecast[] = []
 
-      request.onsuccess = () => resolve(request.result || [])
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result
+        if (cursor) {
+          const forecast = cursor.value
+          // Check if synced is false or undefined
+          if (forecast.synced === false || forecast.synced === undefined) {
+            unsynced.push(forecast)
+          }
+          cursor.continue()
+        } else {
+          resolve(unsynced)
+        }
+      }
       request.onerror = () => reject(request.error)
     })
   }

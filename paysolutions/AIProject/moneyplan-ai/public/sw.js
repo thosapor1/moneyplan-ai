@@ -66,10 +66,13 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           // Cache successful responses
-          if (response.ok) {
+          if (response.ok && url.protocol !== 'chrome-extension:' && url.protocol !== 'chrome:' && url.protocol !== 'moz-extension:') {
             const responseClone = response.clone()
             caches.open(RUNTIME_CACHE).then((cache) => {
-              cache.put(request, responseClone)
+              cache.put(request, responseClone).catch((err) => {
+                // Ignore cache errors for unsupported schemes
+                console.log('[Service Worker] Cache put error (ignored):', err)
+              })
             })
           }
           return response
@@ -107,9 +110,17 @@ self.addEventListener('fetch', (event) => {
             return response
           }
 
+          // Skip caching for unsupported schemes (chrome-extension, etc.)
+          if (url.protocol === 'chrome-extension:' || url.protocol === 'chrome:' || url.protocol === 'moz-extension:') {
+            return response
+          }
+
           const responseToCache = response.clone()
           caches.open(RUNTIME_CACHE).then((cache) => {
-            cache.put(request, responseToCache)
+            cache.put(request, responseToCache).catch((err) => {
+              // Ignore cache errors for unsupported schemes
+              console.log('[Service Worker] Cache put error (ignored):', err)
+            })
           })
 
           return response
