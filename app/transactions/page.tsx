@@ -137,14 +137,14 @@ export default function TransactionsPage() {
             // Load from offline DB
             const offlineTransactions = await offlineDB.getTransactions(session.user.id)
             setTransactions(offlineTransactions.map(t => ({
-              id: t.temp_id,
-              user_id: t.user_id,
+              id: t.id || t.local_id,
+              user_id: t.user_id || session.user.id,
               type: t.type,
               amount: t.amount,
               category: t.category,
               description: t.description,
               date: t.date,
-              created_at: t.created_at,
+              created_at: t.created_at || new Date().toISOString(),
               updated_at: t.updated_at,
             })) as Transaction[])
           }
