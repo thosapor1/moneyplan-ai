@@ -25,6 +25,12 @@ export default function ProfilePage() {
   })
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const initialProfileRef = useRef<Profile | null>(null)
+  const profileRef = useRef<Profile>(profile)
+
+  // Keep profileRef in sync with profile state
+  useEffect(() => {
+    profileRef.current = profile
+  }, [profile])
 
   const loadProfile = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -92,21 +98,25 @@ export default function ProfilePage() {
 
   const saveProfile = async () => {
     const { data: { session } } = await supabase.auth.getSession()
-    if (!session || !profile.id) return
+    if (!session || !profileRef.current.id) return
 
     try {
       setSaving(true)
+      
+      // Use the latest profile from ref
+      const profileToSave = { ...profileRef.current }
+      
       const { error } = await supabase
         .from('profiles')
         .upsert({
-          ...profile,
+          ...profileToSave,
           id: session.user.id,
           updated_at: new Date().toISOString(),
         })
 
       if (error) throw error
 
-      initialProfileRef.current = { ...profile }
+      initialProfileRef.current = { ...profileToSave }
     } catch (error: any) {
       console.error('Error saving profile:', error)
       // Revert to initial state on error
