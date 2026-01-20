@@ -6,8 +6,8 @@ export interface OfflineTransaction {
   // DB identity (only set after successful sync)
   id?: string // UUID from Supabase (only present after sync)
   
-  // Local identity (always present for offline records)
-  local_id: string // Local temp ID like "temp_123..." (never sent to Supabase)
+  // Local identity (auto-generated if not provided)
+  local_id?: string // Local temp ID like "temp_123..." (never sent to Supabase)
   
   // User identity (optional offline, required for sync)
   user_id?: string // User ID (optional offline, injected during sync)
