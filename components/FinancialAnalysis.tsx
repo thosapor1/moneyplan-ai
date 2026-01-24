@@ -25,11 +25,13 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
     : 0
   
   // อัตราส่วนเงินสำรองเผื่อฉุกเฉิน = ทรัพย์สินสภาพคล่อง / รายจ่ายรวมต่อเดือน
-  // ทรัพย์สินสภาพคล่อง = liquid_assets
+  // ทรัพย์สินสภาพคล่อง = liquid_assets + saving (รวมเงินออมที่สะสมไว้)
   // รายจ่ายรวมต่อเดือน = fixed_expense + variable_expense
   const monthlyExpense = profile.fixed_expense + profile.variable_expense
+  // รวมเงินออมเข้าไปในทรัพย์สินสภาพคล่อง (เงินฝากออมทรัพย์ เงินฝากประจำ เป็นสินทรัพย์สภาพคล่อง)
+  const totalLiquidAssets = profile.liquid_assets + profile.saving
   const emergencyRatio = monthlyExpense > 0 
-    ? profile.liquid_assets / monthlyExpense 
+    ? totalLiquidAssets / monthlyExpense 
     : 0
   
   // ความมั่งคั่งสุทธิ = ทรัพย์สินรวม - หนี้สินรวม
@@ -141,7 +143,7 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
     
     if (emergencyRatio < 6) {
       const targetEmergency = monthlyExpense * 6
-      const needed = targetEmergency - profile.liquid_assets
+      const needed = targetEmergency - totalLiquidAssets
       if (needed > 0) {
         recommendations.push(`สะสมเงินสำรองเผื่อฉุกเฉินให้ได้ ${targetEmergency.toLocaleString('th-TH')} บาท (ยังขาดอีก ${needed.toLocaleString('th-TH')} บาท)`)
       }
