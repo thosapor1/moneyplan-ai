@@ -11,17 +11,17 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
   // คำนวณตัวชี้วัดทางการเงิน
   
   // อัตราส่วนการออมและการลงทุน = (เงินออมและเงินลงทุนรายเดือน x 100) / รายได้รวมต่อเดือน
-  // เงินออมและเงินลงทุนรายเดือน = saving + investment
+  // เงินออมและเงินลงทุนรายเดือน = saving (ช่องเงินออมในงบรายรับรายจ่าย)
   // รายได้รวมต่อเดือน = totalIncome
   const savingRatio = totalIncome > 0 
-    ? ((profile.saving + profile.investment) / totalIncome) * 100 
+    ? (profile.saving / totalIncome) * 100 
     : 0
   
   // อัตราส่วนเงินผ่อนชำระหนี้ต่อรายได้ = (เงินผ่อนชำระหนี้ต่อเดือน x 100) / รายได้รวมต่อเดือน
-  // เงินผ่อนชำระหนี้ต่อเดือน = variable_expense (รายจ่ายผันแปร)
+  // เงินผ่อนชำระหนี้ต่อเดือน = fixed_expense (รายจ่ายคงที่)
   // รายได้รวมต่อเดือน = totalIncome
   const debtRatio = totalIncome > 0 
-    ? (profile.variable_expense / totalIncome) * 100 
+    ? (profile.fixed_expense / totalIncome) * 100 
     : 0
   
   // อัตราส่วนเงินสำรองเผื่อฉุกเฉิน = ทรัพย์สินสภาพคล่อง / รายจ่ายรวมต่อเดือน
