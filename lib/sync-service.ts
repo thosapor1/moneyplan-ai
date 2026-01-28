@@ -145,14 +145,6 @@ export class SyncService {
         }
       }
 
-      // Dispatch sync complete event for UI updates
-      if (typeof window !== 'undefined' && successCount > 0) {
-        const event = new CustomEvent('sync-complete', { 
-          detail: { successCount, totalCount: results.length } 
-        })
-        window.dispatchEvent(event)
-        console.log('[Sync Service] 📢 Dispatched sync-complete event')
-      }
     } catch (error) {
       console.error('[Sync Service] ❌ Fatal sync error:', error)
     } finally {
