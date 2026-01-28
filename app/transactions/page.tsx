@@ -3,8 +3,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Transaction } from '@/lib/supabase'
-import { syncService } from '@/lib/sync-service'
-import { offlineDB } from '@/lib/offline-db'
 import BottomNavigation from '@/components/BottomNavigation'
 import CategoryIcon from '@/components/CategoryIcon'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
@@ -13,7 +11,6 @@ export default function TransactionsPage() {
   const router = useRouter()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
-  const [syncing, setSyncing] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [showModal, setShowModal] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
@@ -59,7 +56,6 @@ export default function TransactionsPage() {
     }
 
     try {
-      // Try to load from online first
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
@@ -67,117 +63,28 @@ export default function TransactionsPage() {
         .order('date', { ascending: false })
         .order('created_at', { ascending: false })
 
-      if (error && navigator.onLine) {
+      if (error) {
         throw error
       }
 
-      // Get offline transactions (only unsynced ones)
-      const offlineTransactions = await offlineDB.getTransactions(session.user.id)
-      const unsyncedOffline = offlineTransactions.filter(t => !t.synced)
-      
-      // Get online transaction IDs to avoid duplicates
-      const onlineIds = new Set((data || []).map(t => t.id))
-      
-      // Merge online and offline transactions, avoiding duplicates
-      // CRITICAL: Only show offline transactions that haven't been synced
-      // CRITICAL: Use DB id for display, never local_id
-      const offlineToShow = unsyncedOffline
-        .filter(t => {
-          // If it has a DB id, check if it's already in online data
-          if (t.id) {
-            return !onlineIds.has(t.id)
-          }
-          // If no DB id, it's a new transaction that hasn't been synced
-          return true
-        })
-        .map(t => ({
-          // CRITICAL: Use DB id if available, otherwise use local_id for display
-          // But mark it so we know it's not synced yet
-          id: t.id || `local_${t.local_id}`, // Prefix local_id so we can identify it
-          user_id: t.user_id || session.user.id,
-          type: t.type,
-          amount: t.amount,
-          category: t.category,
-          description: t.description,
-          date: t.date,
-          created_at: t.created_at,
-          updated_at: t.updated_at,
-          _isLocal: !t.id, // Flag to indicate this is local-only
-          _localId: t.local_id, // Store local_id for reference
-        }))
-      
-      const allTransactions = [
-        ...(data || []),
-        ...offlineToShow
-      ]
-
       // Sort by date
-      allTransactions.sort((a, b) => {
+      const sortedTransactions = (data || []).sort((a, b) => {
         const dateA = new Date(a.date).getTime()
         const dateB = new Date(b.date).getTime()
         return dateB - dateA
       })
 
-      setTransactions(allTransactions as Transaction[])
-
-      // Cache online data
-      if (data && navigator.onLine) {
-        await offlineDB.cacheData(`transactions_${session.user.id}`, data)
-      }
+      setTransactions(sortedTransactions as Transaction[])
     } catch (error) {
       console.error('Error loading transactions:', error)
-      
-      // If offline, try to load from cache
-      if (!navigator.onLine) {
-        try {
-          const cached = await offlineDB.getCachedData(`transactions_${session.user.id}`)
-          if (cached) {
-            setTransactions(cached)
-          } else {
-            // Load from offline DB
-            const offlineTransactions = await offlineDB.getTransactions(session.user.id)
-            setTransactions(offlineTransactions.map(t => ({
-              id: t.id || t.local_id,
-              user_id: t.user_id || session.user.id,
-              type: t.type,
-              amount: t.amount,
-              category: t.category,
-              description: t.description,
-              date: t.date,
-              created_at: t.created_at || new Date().toISOString(),
-              updated_at: t.updated_at,
-            })) as Transaction[])
-          }
-        } catch (offlineError) {
-          console.error('Error loading offline transactions:', offlineError)
-        }
-      }
+      alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + (error as any).message || 'ไม่สามารถโหลดข้อมูลได้')
     } finally {
       setLoading(false)
     }
   }, [router])
 
   useEffect(() => {
-    const initSync = async () => {
-      await loadTransactions()
-      
-      // Try to sync when page loads if online
-      if (navigator.onLine) {
-        try {
-          const { data: { session } } = await supabase.auth.getSession()
-          if (session) {
-            console.log('[Transactions] Attempting to sync on page load...')
-            await syncService.syncAll()
-            // Reload transactions after sync
-            await loadTransactions()
-          }
-        } catch (err) {
-          console.error('[Transactions] Sync error on page load:', err)
-        }
-      }
-    }
-    
-    initSync()
+    loadTransactions()
   }, [loadTransactions])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -210,75 +117,46 @@ export default function TransactionsPage() {
     }
 
     try {
-      const isOnline = navigator.onLine
-
       if (editingTransaction) {
         // อัปเดต
         console.log('Updating transaction:', editingTransaction.id)
         
-        if (isOnline) {
-          const { error } = await supabase
-            .from('transactions')
-            .update({
-              type: formData.type,
-              amount: amount,
-              category: formData.category || null,
-              description: formData.description || null,
-              date: formData.date,
-            })
-            .eq('id', editingTransaction.id)
-
-          if (error) {
-            console.error('Update error:', error)
-            throw error
-          }
-          console.log('Transaction updated successfully')
-        } else {
-          // Save offline
-          await syncService.saveTransactionOffline({
-            id: editingTransaction.id,
-            user_id: session.user.id,
+        const { error } = await supabase
+          .from('transactions')
+          .update({
             type: formData.type,
             amount: amount,
-            category: formData.category,
-            description: formData.description,
+            category: formData.category || null,
+            description: formData.description || null,
             date: formData.date,
           })
-          alert('บันทึกข้อมูลออฟไลน์แล้ว จะ sync อัตโนมัติเมื่อกลับมาออนไลน์')
+          .eq('id', editingTransaction.id)
+
+        if (error) {
+          console.error('Update error:', error)
+          throw error
         }
+        console.log('Transaction updated successfully')
       } else {
         // สร้างใหม่
         console.log('Creating new transaction')
         
-        if (isOnline) {
-          const { error } = await supabase
-            .from('transactions')
-            .insert({
-              user_id: session.user.id,
-              type: formData.type,
-              amount: amount,
-              category: formData.category || null,
-              description: formData.description || null,
-              date: formData.date,
-            })
-
-          if (error) {
-            console.error('Insert error:', error)
-            throw error
-          }
-          console.log('Transaction created successfully')
-        } else {
-          // Save offline
-          await syncService.saveTransactionOffline({
+        const { error } = await supabase
+          .from('transactions')
+          .insert({
             user_id: session.user.id,
             type: formData.type,
             amount: amount,
-            category: formData.category,
-            description: formData.description,
+            category: formData.category || null,
+            description: formData.description || null,
             date: formData.date,
           })
-          alert('บันทึกข้อมูลออฟไลน์แล้ว จะ sync อัตโนมัติเมื่อกลับมาออนไลน์')
+
+        if (error) {
+          console.error('Insert error:', error)
+          throw error
         }
+        console.log('Transaction created successfully')
       }
 
       // Reset form and close modal
@@ -296,38 +174,7 @@ export default function TransactionsPage() {
       await loadTransactions()
     } catch (error: any) {
       console.error('Error saving transaction:', error)
-      
-      // If online error, try to save offline
-      if (navigator.onLine) {
-        try {
-          await syncService.saveTransactionOffline({
-            user_id: session.user.id,
-            type: formData.type,
-            amount: amount,
-            category: formData.category,
-            description: formData.description,
-            date: formData.date,
-          })
-          alert('บันทึกข้อมูลออฟไลน์แล้ว จะ sync อัตโนมัติเมื่อกลับมาออนไลน์')
-          
-          // Reset form and close modal
-          setEditingTransaction(null)
-          setShowModal(false)
-          setFormData({
-            type: 'expense',
-            amount: '',
-            category: '',
-            description: '',
-            date: format(new Date(), 'yyyy-MM-dd'),
-          })
-          
-          await loadTransactions()
-        } catch (offlineError) {
-          alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถบันทึกข้อมูลได้'))
-        }
-      } else {
-        alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถบันทึกข้อมูลได้'))
-      }
+      alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถบันทึกข้อมูลได้'))
     }
   }
 
@@ -352,55 +199,20 @@ export default function TransactionsPage() {
         return
       }
 
-      // CRITICAL: Check if this is a local-only transaction (not synced yet)
-      // If it starts with "local_", it's a local_id and we should delete from IndexedDB only
-      if (id.startsWith('local_')) {
-        const localId = id.replace('local_', '')
-        console.log(`[Transactions] Deleting local-only transaction: ${localId}`)
-        
-        // Delete from IndexedDB using local_id
-        await offlineDB.deleteTransactionByLocalId(localId)
-        console.log(`[Transactions] ✅ Deleted local transaction ${localId} from IndexedDB`)
-        
-        await loadTransactions()
-        return
-      }
+      const { error } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id)
 
-      // This is a real DB transaction - delete from Supabase
-      // CRITICAL: Only use real UUIDs, never local_id
-      console.log(`[Transactions] Deleting transaction from Supabase: ${id}`)
-      
-      if (navigator.onLine) {
-        const { error } = await supabase
-          .from('transactions')
-          .delete()
-          .eq('id', id) // id should be a UUID, not local_id
-
-        if (error) {
-          console.error(`[Transactions] Delete error:`, error)
-          throw error
-        }
-        
-        console.log(`[Transactions] ✅ Deleted transaction ${id} from Supabase`)
-      } else {
-        // If offline, mark for deletion in IndexedDB
-        // Find the transaction and mark it for deletion
-        const offlineTransactions = await offlineDB.getTransactions(session.user.id)
-        const txToDelete = offlineTransactions.find(t => t.id === id)
-        
-        if (txToDelete) {
-          // Mark as deleted (or actually delete if it's local-only)
-          if (txToDelete.local_id) {
-            await offlineDB.deleteTransactionByLocalId(txToDelete.local_id)
-          }
-          console.log(`[Transactions] ✅ Marked transaction ${id} for deletion (offline)`)
-        }
+      if (error) {
+        console.error('Delete error:', error)
+        throw error
       }
       
       await loadTransactions()
     } catch (error: any) {
-      console.error(`[Transactions] Delete failed:`, error)
-      alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถลบรายการได้'))
+      console.error('Error deleting transaction:', error)
+      alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถลบข้อมูลได้'))
     }
   }
 
@@ -426,42 +238,6 @@ export default function TransactionsPage() {
     setSelectedMonth(newMonth)
   }
 
-  const handleManualSync = async () => {
-    if (!navigator.onLine) {
-      alert('คุณกำลังออฟไลน์ กรุณาเชื่อมต่ออินเทอร์เน็ตก่อน')
-      return
-    }
-
-    setSyncing(true)
-    try {
-      console.log('[Transactions] Manual sync started...')
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        alert('กรุณาเข้าสู่ระบบก่อน')
-        return
-      }
-
-      // Check unsynced transactions
-      const unsynced = await offlineDB.getUnsyncedTransactions()
-      const userUnsynced = unsynced.filter((t) => t.user_id === session.user.id)
-      console.log(`[Transactions] Found ${userUnsynced.length} unsynced transactions`)
-
-      if (userUnsynced.length === 0) {
-        alert('ไม่มีข้อมูลที่ต้อง sync')
-        setSyncing(false)
-        return
-      }
-
-      await syncService.syncAll()
-      await loadTransactions()
-      alert(`ซิงค์ข้อมูลสำเร็จ ${userUnsynced.length} รายการ`)
-    } catch (error: any) {
-      console.error('[Transactions] Manual sync error:', error)
-      alert('เกิดข้อผิดพลาดในการ sync: ' + (error.message || 'ไม่ทราบสาเหตุ'))
-    } finally {
-      setSyncing(false)
-    }
-  }
 
   const monthNames = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
   const currentMonthName = monthNames[selectedMonth.getMonth()]
@@ -529,8 +305,8 @@ export default function TransactionsPage() {
           </button>
         </div>
 
-        {/* Add Item Button and Sync Button */}
-        <div className="space-y-2 mb-4">
+        {/* Add Item Button */}
+        <div className="mb-4">
           <button
             onClick={() => {
               setEditingTransaction(null)
@@ -546,28 +322,6 @@ export default function TransactionsPage() {
             className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-700"
           >
             + เพิ่มรายการ
-          </button>
-          <button
-            onClick={handleManualSync}
-            disabled={syncing || !navigator.onLine}
-            className="w-full bg-green-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {syncing ? (
-              <>
-                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                กำลังซิงค์...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                ซิงค์ข้อมูล
-              </>
-            )}
           </button>
         </div>
 
