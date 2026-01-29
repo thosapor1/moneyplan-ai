@@ -58,3 +58,52 @@ export type Forecast = {
   expense: number
   note?: string
 }
+
+export type CategoryBudgetRow = {
+  id: string
+  user_id: string
+  category: string
+  budget: number
+  updated_at?: string
+}
+
+/** โหลดงบรายจ่ายรายเดือนต่อหมวด (บาท) จาก DB */
+export async function fetchCategoryBudgets(
+  userId: string
+): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('category_budgets')
+    .select('category, budget')
+    .eq('user_id', userId)
+  if (error) {
+    console.error('fetchCategoryBudgets:', error)
+    return {}
+  }
+  const result: Record<string, number> = {}
+  for (const row of data || []) {
+    const n = Number(row.budget)
+    if (!isNaN(n) && n >= 0) result[row.category] = n
+  }
+  return result
+}
+
+/** บันทึกงบรายจ่ายรายเดือนต่อหมวดลง DB (upsert ตาม user_id + category) */
+export async function saveCategoryBudgets(
+  userId: string,
+  budgets: Record<string, number>
+): Promise<{ error: Error | null }> {
+  const rows = Object.entries(budgets).map(([category, budget]) => ({
+    user_id: userId,
+    category,
+    budget: Number(budget) || 0,
+    updated_at: new Date().toISOString(),
+  }))
+  const { error } = await supabase.from('category_budgets').upsert(rows, {
+    onConflict: 'user_id,category',
+  })
+  if (error) {
+    console.error('saveCategoryBudgets:', error)
+    return { error }
+  }
+  return { error: null }
+}

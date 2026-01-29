@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase, Transaction } from '@/lib/supabase'
+import { supabase, Transaction, fetchCategoryBudgets } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
 import CategoryIcon from '@/components/CategoryIcon'
 import { format, startOfMonth, endOfMonth, getDate } from 'date-fns'
-import { EXPENSE_CATEGORIES, getCategoryBudgets, getVisibleCategories, setVisibleCategories } from '@/lib/storage'
+import { EXPENSE_CATEGORIES, getVisibleCategories, setVisibleCategories } from '@/lib/storage'
 
 export default function TransactionsPage() {
   const router = useRouter()
@@ -17,7 +17,7 @@ export default function TransactionsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   /** หมวดที่เลือกให้แสดง (ว่าง = แสดงทุกหมวด) ใช้ทั้งกรองรายการและคำนวณงบวันนี้ */
   const [visibleCategories, setVisibleCategoriesState] = useState<string[]>([])
-  /** งบรายเดือนต่อหมวด (จาก Profile / localStorage) */
+  /** งบรายเดือนต่อหมวด (จาก DB) */
   const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
   const [formData, setFormData] = useState({
     type: 'expense' as 'income' | 'expense',
@@ -66,6 +66,9 @@ export default function TransactionsPage() {
       })
 
       setTransactions(sortedTransactions as Transaction[])
+
+      const budgets = await fetchCategoryBudgets(session.user.id)
+      setCategoryBudgetsState(budgets)
     } catch (error) {
       console.error('Error loading transactions:', error)
       alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + (error as any).message || 'ไม่สามารถโหลดข้อมูลได้')
@@ -78,17 +81,22 @@ export default function TransactionsPage() {
     loadTransactions()
   }, [loadTransactions])
 
-  // โหลดหมวดที่แสดงและงบรายเดือนต่อหมวดจาก localStorage
+  // โหลดหมวดที่แสดงจาก localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return
     setVisibleCategoriesState(getVisibleCategories())
-    setCategoryBudgetsState(getCategoryBudgets())
   }, [])
 
   // โหลดงบรายเดือนใหม่เมื่อกลับมาที่แท็บ (เช่น หลังแก้ในโปรไฟล์)
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const onFocus = () => setCategoryBudgetsState(getCategoryBudgets())
+    const onFocus = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        const budgets = await fetchCategoryBudgets(session.user.id)
+        setCategoryBudgetsState(budgets)
+      }
+    }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [])

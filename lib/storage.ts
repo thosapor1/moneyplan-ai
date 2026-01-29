@@ -1,10 +1,9 @@
 /**
  * ค่าคงที่และฟังก์ชันสำหรับเก็บข้อมูลใน localStorage
- * - งบรายจ่ายรายเดือนต่อหมวด (category budget)
  * - หมวดที่เลือกให้แสดงในหน้ารายรับรายจ่าย (visible categories)
+ * หมายเหตุ: งบรายจ่ายรายเดือนต่อหมวดเก็บใน DB (ตาราง category_budgets)
  */
 
-export const CATEGORY_BUDGET_KEY = 'moneyplan_category_budget'
 export const VISIBLE_CATEGORIES_KEY = 'moneyplan_visible_categories'
 
 /** หมวดหมู่รายจ่าย (ใช้ร่วมกับ Profile งบต่อหมวด และ Transactions) */
@@ -25,34 +24,6 @@ export const EXPENSE_CATEGORIES = [
 ] as const
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number]
-
-/** อ่านงบรายจ่ายรายเดือนต่อหมวด (บาท) */
-export function getCategoryBudgets(): Record<string, number> {
-  if (typeof window === 'undefined') return {}
-  try {
-    const raw = localStorage.getItem(CATEGORY_BUDGET_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw) as Record<string, unknown>
-    const result: Record<string, number> = {}
-    for (const [k, v] of Object.entries(parsed)) {
-      const n = Number(v)
-      if (!isNaN(n) && n >= 0) result[k] = n
-    }
-    return result
-  } catch {
-    return {}
-  }
-}
-
-/** บันทึกงบรายจ่ายรายเดือนต่อหมวด */
-export function setCategoryBudgets(budgets: Record<string, number>): void {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(CATEGORY_BUDGET_KEY, JSON.stringify(budgets))
-  } catch (e) {
-    console.error('setCategoryBudgets:', e)
-  }
-}
 
 /**
  * อ่านหมวดที่เลือกให้แสดงในหน้ารายรับรายจ่าย
