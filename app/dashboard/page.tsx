@@ -5,7 +5,24 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase, Profile, Transaction } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
-import FinancialAnalysis from '@/components/FinancialAnalysis'
+import {
+  getCurrentBalance,
+  getRemainingDaysInMonth,
+  getDaysElapsedInMonth,
+  getAvgDailyExpense,
+  getDaysLeft,
+  getProjectedEndOfMonthBalance,
+  getFinancialStatus,
+  getTodayExpense,
+  getTodayVsAvgPercent,
+  getTopExpenseCategories,
+  getRecentBigExpenses,
+} from '@/lib/finance'
+import FinancialStatusCard from './components/FinancialStatusCard'
+import ProjectedBalanceCard from './components/ProjectedBalanceCard'
+import TodayVsAverageCard from './components/TodayVsAverageCard'
+import TopSpendingCategories from './components/TopSpendingCategories'
+import RecentBigExpenses from './components/RecentBigExpenses'
 import { format, startOfMonth, endOfMonth, subMonths, eachMonthOfInterval, startOfDay, endOfDay, eachDayOfInterval, subDays, startOfWeek, endOfWeek, eachWeekOfInterval, subWeeks, startOfYear, endOfYear, eachYearOfInterval, subYears } from 'date-fns'
 
 export default function DashboardPage() {
@@ -339,39 +356,21 @@ export default function DashboardPage() {
     )
   }
 
-  if (!profile) {
-    return (
-      <div className="min-h-screen bg-gray-50 pb-16">
-        <div className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center">
-          <h1 className="text-lg font-semibold">ภาพรวม</h1>
-          <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-            </svg>
-          </div>
-        </div>
-        <div className="max-w-md mx-auto px-4 py-8">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-            <h2 className="text-lg font-semibold text-yellow-800 mb-2">
-              ยังไม่มีข้อมูลสุขภาพการเงิน
-            </h2>
-            <p className="text-yellow-700 mb-4">
-              กรุณากรอกข้อมูลสุขภาพการเงินของคุณก่อนเพื่อดูการวิเคราะห์
-            </p>
-            <Link
-              href="/profile"
-              className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-            >
-              กรอกข้อมูลสุขภาพการเงิน
-            </Link>
-          </div>
-        </div>
-        <BottomNavigation />
-      </div>
-    )
-  }
-
-  const balance = totalIncome - totalExpense
+  const now = new Date()
+  const isViewingCurrentMonth =
+    selectedMonth.getMonth() === now.getMonth() && selectedMonth.getFullYear() === now.getFullYear()
+  const daysElapsed = getDaysElapsedInMonth(selectedMonth, now)
+  const remainingDays = isViewingCurrentMonth ? getRemainingDaysInMonth(now) : 0
+  const currentBalance = getCurrentBalance(totalIncome, totalExpense)
+  const avgDailyExpense = getAvgDailyExpense(totalExpense, Math.max(daysElapsed, 1))
+  const daysLeft = getDaysLeft(currentBalance, avgDailyExpense)
+  const projectedBalance = getProjectedEndOfMonthBalance(currentBalance, avgDailyExpense, remainingDays)
+  const financialStatus = getFinancialStatus(projectedBalance, daysLeft, remainingDays)
+  const todayStr = format(now, 'yyyy-MM-dd')
+  const todayExpense = isViewingCurrentMonth ? getTodayExpense(transactions, todayStr) : 0
+  const todayVsAvgPercent = getTodayVsAvgPercent(todayExpense, avgDailyExpense)
+  const topCategories = getTopExpenseCategories(transactions, 3)
+  const recentBigExpenses = getRecentBigExpenses(transactions, 5)
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
@@ -412,29 +411,34 @@ export default function DashboardPage() {
           </button>
         </div>
 
-        {/* Financial Summary Cards */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-xs text-gray-500 mb-1">รายรับ</p>
-            <p className="text-lg font-bold text-green-600">
-              {totalIncome.toLocaleString('th-TH')}
-            </p>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-xs text-gray-500 mb-1">รายจ่าย</p>
-            <p className="text-lg font-bold text-red-600">
-              {totalExpense.toLocaleString('th-TH')}
-            </p>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <p className="text-xs text-gray-500 mb-1">คงเหลือ</p>
-            <p className={`text-lg font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {balance.toLocaleString('th-TH')}
-            </p>
-          </div>
+        {/* 1) Financial Status Card (Hero) */}
+        <div className="mb-4">
+          <FinancialStatusCard
+            status={financialStatus}
+            currentBalance={currentBalance}
+            daysLeft={daysLeft === Infinity ? 999 : daysLeft}
+            remainingDays={remainingDays}
+          />
         </div>
 
-        {/* Trend Graph – Grouped Bar + Net Line */}
+        {/* 2) Projected End-of-Month Balance + 3) Today vs Average – grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+          <ProjectedBalanceCard projectedBalance={projectedBalance} />
+          {isViewingCurrentMonth && (
+            <TodayVsAverageCard
+              todayExpense={todayExpense}
+              avgDailyExpense={avgDailyExpense}
+              percentDiff={todayVsAvgPercent}
+            />
+          )}
+        </div>
+
+        {/* 4) Top Spending Categories */}
+        <div className="mb-4">
+          <TopSpendingCategories categories={topCategories} totalExpense={totalExpense} />
+        </div>
+
+        {/* 5) Income vs Expense Trend (Behavior Chart) */}
         {trendData.length > 0 && (() => {
           const n = trendData.length
           const bandWidth = n > 1 ? PLOT_WIDTH / n : PLOT_WIDTH
@@ -690,104 +694,10 @@ export default function DashboardPage() {
           )
         })()}
 
-        {/* Financial Analysis from Profile and Transactions */}
-        {profile && (
-          <div className="bg-white p-4 rounded-lg shadow-sm mb-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <span>📊</span>
-              วิเคราะห์การเงิน
-            </h3>
-            <FinancialAnalysis profile={profile} totalIncome={totalIncome} />
-          </div>
-        )}
-
-        {/* Transaction Analysis */}
-        {transactions.length > 0 && (
-          <div className="bg-white p-4 rounded-lg shadow-sm mb-4">
-            <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-              <span>💰</span>
-              สรุปรายรับรายจ่าย
-            </h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">รายรับรวม (เดือนนี้)</span>
-                <span className="text-sm font-semibold text-green-600">
-                  {totalIncome.toLocaleString('th-TH')} บาท
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">รายจ่ายรวม (เดือนนี้)</span>
-                <span className="text-sm font-semibold text-red-600">
-                  {totalExpense.toLocaleString('th-TH')} บาท
-                </span>
-              </div>
-              <div className="pt-2 border-t border-gray-200">
-                <div className="flex justify-between items-center">
-                  <span className="text-sm font-medium text-gray-800">ยอดคงเหลือ</span>
-                  <span className={`text-sm font-bold ${balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {balance.toLocaleString('th-TH')} บาท
-                  </span>
-                </div>
-              </div>
-              {profile && totalIncome > 0 && (
-                <div className="pt-2 border-t border-gray-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">อัตราการออม (จากรายรับ)</span>
-                    <span className={`text-sm font-medium ${
-                      (balance / totalIncome) * 100 >= 10 ? 'text-green-600' : 'text-yellow-600'
-                    }`}>
-                      {((balance / totalIncome) * 100).toFixed(1)}%
-                    </span>
-                  </div>
-                  {profile.fixed_expense > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">รายจ่ายคงที่ (จาก Profile)</span>
-                      <span className="text-sm font-medium text-gray-800">
-                        {profile.fixed_expense.toLocaleString('th-TH')} บาท
-                      </span>
-                    </div>
-                  )}
-                  {profile.variable_expense > 0 && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-600">รายจ่ายผันแปร (จาก Profile)</span>
-                      <span className="text-sm font-medium text-gray-800">
-                        {profile.variable_expense.toLocaleString('th-TH')} บาท
-                      </span>
-                    </div>
-                  )}
-                  {totalExpense > 0 && (
-                    <div className="pt-2 border-t border-gray-100">
-                      <div className="text-sm text-gray-500 mb-1">
-                        เปรียบเทียบรายจ่ายจริง vs งบประมาณ
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">รายจ่ายจริง (เดือนนี้)</span>
-                        <span className={`text-sm font-medium ${
-                          totalExpense > (profile.fixed_expense + profile.variable_expense) 
-                            ? 'text-red-600' 
-                            : 'text-green-600'
-                        }`}>
-                          {totalExpense.toLocaleString('th-TH')} บาท
-                        </span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-600">งบประมาณรายจ่าย</span>
-                        <span className="text-sm font-medium text-gray-800">
-                          {(profile.fixed_expense + profile.variable_expense).toLocaleString('th-TH')} บาท
-                        </span>
-                      </div>
-                      {totalExpense > (profile.fixed_expense + profile.variable_expense) && (
-                        <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded">
-                          ⚠️ รายจ่ายจริงเกินงบประมาณ {(totalExpense - (profile.fixed_expense + profile.variable_expense)).toLocaleString('th-TH')} บาท
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* 6) Recent Big Expenses */}
+        <div className="mb-4">
+          <RecentBigExpenses items={recentBigExpenses} />
+        </div>
 
         {/* Latest Transactions */}
         <div className="bg-white rounded-lg shadow-sm overflow-hidden">

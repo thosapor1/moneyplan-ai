@@ -5,9 +5,8 @@ import { useRouter } from 'next/navigation'
 import { supabase, Transaction } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
 import CategoryIcon from '@/components/CategoryIcon'
-import { format, startOfMonth, endOfMonth } from 'date-fns'
-
-const DAILY_EXPENSE_LIMIT_KEY = 'moneyplan_daily_expense_limit'
+import { format, startOfMonth, endOfMonth, getDate } from 'date-fns'
+import { EXPENSE_CATEGORIES, getCategoryBudgets, getVisibleCategories, setVisibleCategories } from '@/lib/storage'
 
 export default function TransactionsPage() {
   const router = useRouter()
@@ -15,10 +14,11 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [showModal, setShowModal] = useState(false)
-  const [showDailyLimitModal, setShowDailyLimitModal] = useState(false)
-  const [dailyExpenseLimit, setDailyExpenseLimit] = useState<number>(0)
-  const [dailyLimitInput, setDailyLimitInput] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(new Date())
+  /** หมวดที่เลือกให้แสดง (ว่าง = แสดงทุกหมวด) ใช้ทั้งกรองรายการและคำนวณงบวันนี้ */
+  const [visibleCategories, setVisibleCategoriesState] = useState<string[]>([])
+  /** งบรายเดือนต่อหมวด (จาก Profile / localStorage) */
+  const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
   const [formData, setFormData] = useState({
     type: 'expense' as 'income' | 'expense',
     amount: '',
@@ -37,21 +37,7 @@ export default function TransactionsPage() {
     'รายได้อื่นๆ'
   ]
 
-  const expenseCategories = [
-    'อาหาร',
-    'ค่าเดินทาง',
-    'ที่พัก/ค่าเช่า',
-    'สาธารณูปโภค',
-    'สุขภาพ',
-    'บันเทิง',
-    'การศึกษา',
-    'ช้อปปิ้ง',
-    'โทรศัพท์/อินเทอร์เน็ต',
-    'ผ่อนชำระหนี้',
-    'ลงทุน',
-    'ออมเงิน',
-    'อื่นๆ'
-  ]
+  const expenseCategories = [...EXPENSE_CATEGORIES]
 
   const loadTransactions = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -92,35 +78,52 @@ export default function TransactionsPage() {
     loadTransactions()
   }, [loadTransactions])
 
-  // โหลดงบรายจ่ายต่อวันจาก localStorage
+  // โหลดหมวดที่แสดงและงบรายเดือนต่อหมวดจาก localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const saved = localStorage.getItem(DAILY_EXPENSE_LIMIT_KEY)
-    if (saved) {
-      const num = Number(saved)
-      if (!isNaN(num) && num >= 0) setDailyExpenseLimit(num)
-    }
+    setVisibleCategoriesState(getVisibleCategories())
+    setCategoryBudgetsState(getCategoryBudgets())
   }, [])
 
-  const saveDailyExpenseLimit = () => {
-    const num = Number(dailyLimitInput)
-    if (isNaN(num) || num < 0) {
-      alert('กรุณากรอกตัวเลขที่มากกว่าหรือเท่ากับ 0')
-      return
-    }
-    setDailyExpenseLimit(num)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(DAILY_EXPENSE_LIMIT_KEY, String(num))
-    }
-    setShowDailyLimitModal(false)
-    setDailyLimitInput('')
-  }
+  // โหลดงบรายเดือนใหม่เมื่อกลับมาที่แท็บ (เช่น หลังแก้ในโปรไฟล์)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const onFocus = () => setCategoryBudgetsState(getCategoryBudgets())
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [])
 
   const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const UNKNOWN_CATEGORY_LABEL = 'ไม่ระบุหมวด'
+
+  // หมวดที่นำมาคิดงบวันนี้ (เหมือน "แสดงหมวด": ว่าง = ทุกหมวด, ไม่รวม "ไม่ระบุหมวด" สำหรับงบ)
+  const budgetCategories =
+    visibleCategories.length === 0
+      ? expenseCategories
+      : visibleCategories.filter((c) => c !== UNKNOWN_CATEGORY_LABEL)
+
+  const monthlyTotalForDaily = budgetCategories.reduce(
+    (sum, cat) => sum + (categoryBudgets[cat] ?? 0),
+    0
+  )
+  const daysInCurrentMonth = getDate(endOfMonth(new Date()))
+  const dailyBudgetFromMonthly =
+    daysInCurrentMonth > 0 ? monthlyTotalForDaily / daysInCurrentMonth : 0
+
+  const isInSelectedCategories = (cat: string) => {
+    const c = (cat || '').trim()
+    const effective = c === '' || !expenseCategories.includes(c) ? UNKNOWN_CATEGORY_LABEL : c
+    return visibleCategories.length === 0 || visibleCategories.includes(effective)
+  }
   const expenseToday = transactions
-    .filter((t) => t.type === 'expense' && t.date === todayStr)
+    .filter(
+      (t) =>
+        t.type === 'expense' &&
+        t.date === todayStr &&
+        isInSelectedCategories(t.category || '')
+    )
     .reduce((sum, t) => sum + Number(t.amount), 0)
-  const remainingToday = dailyExpenseLimit > 0 ? dailyExpenseLimit - expenseToday : 0
+  const remainingToday = dailyBudgetFromMonthly - expenseToday
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -278,13 +281,32 @@ export default function TransactionsPage() {
   const currentMonthName = monthNames[selectedMonth.getMonth()]
   const currentYear = selectedMonth.getFullYear() + 543
 
-  // Filter transactions by selected month
+  // Filter transactions by selected month and visible categories
   const filteredTransactions = transactions.filter(t => {
     const tDate = new Date(t.date)
     const monthStart = startOfMonth(selectedMonth)
     const monthEnd = endOfMonth(selectedMonth)
-    return tDate >= monthStart && tDate <= monthEnd
+    if (tDate < monthStart || tDate > monthEnd) return false
+    if (visibleCategories.length === 0) return true
+    const cat = (t.category || '').trim()
+    const effectiveCat = cat === '' || !expenseCategories.includes(cat) ? UNKNOWN_CATEGORY_LABEL : cat
+    return visibleCategories.includes(effectiveCat)
   })
+
+  const toggleVisibleCategory = (category: string) => {
+    setVisibleCategoriesState((prev) => {
+      const next = prev.includes(category)
+        ? prev.filter((c) => c !== category)
+        : [...prev, category]
+      setVisibleCategories(next)
+      return next
+    })
+  }
+
+  const showAllCategories = () => {
+    setVisibleCategoriesState([])
+    setVisibleCategories([])
+  }
 
   if (loading) {
     return (
@@ -340,41 +362,71 @@ export default function TransactionsPage() {
           </button>
         </div>
 
-        {/* งบรายจ่ายต่อวัน */}
+        {/* ตัวกรองหมวด: เลือกว่าจะแสดงและนำมาคิดงบวันนี้ */}
         <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
-          {dailyExpenseLimit <= 0 ? (
+          <p className="text-sm font-medium text-gray-700 mb-2">แสดงหมวด (ใช้คำนวณงบวันนี้ด้วย)</p>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => {
-                setDailyLimitInput('')
-                setShowDailyLimitModal(true)
-              }}
-              className="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"
+              onClick={showAllCategories}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                visibleCategories.length === 0
+                  ? 'bg-gray-800 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              กำหนดงบรายจ่ายต่อวัน
+              ทั้งหมด
             </button>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">งบรายจ่ายต่อวัน</span>
+            {expenseCategories.map((cat) => {
+              const isSelected = visibleCategories.includes(cat)
+              return (
                 <button
+                  key={cat}
                   type="button"
-                  onClick={() => {
-                    setDailyLimitInput(String(dailyExpenseLimit))
-                    setShowDailyLimitModal(true)
-                  }}
-                  className="text-blue-600 text-sm hover:underline"
+                  onClick={() => toggleVisibleCategory(cat)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    isSelected ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                  }`}
                 >
-                  แก้ไข
+                  {cat}
                 </button>
-              </div>
+              )
+            })}
+            <button
+              type="button"
+              onClick={() => toggleVisibleCategory(UNKNOWN_CATEGORY_LABEL)}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                visibleCategories.includes(UNKNOWN_CATEGORY_LABEL) ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+              }`}
+            >
+              {UNKNOWN_CATEGORY_LABEL}
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {visibleCategories.length === 0
+              ? 'แสดงทุกหมวด'
+              : `แสดงเฉพาะ: ${visibleCategories.join(', ')}`}
+          </p>
+        </div>
+
+        {/* งบรายจ่ายต่อวัน (คำนวณจากงบรายเดือนของหมวดที่เลือกด้านบน) */}
+        <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">งบรายจ่ายต่อวัน</span>
+              <span className="text-xs text-gray-500">จากงบรายเดือนของหมวดที่เลือก</span>
+            </div>
+            {monthlyTotalForDaily <= 0 ? (
+              <p className="text-sm text-amber-600 py-2">
+                กำหนดงบรายเดือนต่อหมวดในหน้าโปรไฟล์ แล้วเลือกหมวดด้านบน
+              </p>
+            ) : (
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-gray-50 rounded-lg p-2">
                   <p className="text-xs text-gray-500">งบวันนี้</p>
-                  <p className="text-sm font-semibold text-gray-800">{dailyExpenseLimit.toLocaleString('th-TH')}</p>
+                  <p className="text-sm font-semibold text-gray-800">
+                    {Math.round(dailyBudgetFromMonthly).toLocaleString('th-TH')}
+                  </p>
                   <p className="text-xs text-gray-400">บาท</p>
                 </div>
                 <div className="bg-red-50 rounded-lg p-2">
@@ -385,13 +437,13 @@ export default function TransactionsPage() {
                 <div className="bg-green-50 rounded-lg p-2">
                   <p className="text-xs text-gray-500">คงเหลือ</p>
                   <p className={`text-sm font-semibold ${remainingToday >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {remainingToday.toLocaleString('th-TH')}
+                    {Math.round(remainingToday).toLocaleString('th-TH')}
                   </p>
                   <p className="text-xs text-gray-400">บาท</p>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Add Item Button */}
@@ -593,44 +645,6 @@ export default function TransactionsPage() {
                 บันทึก
               </button>
               </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal กำหนดงบรายจ่ายต่อวัน */}
-      {showDailyLimitModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-4 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">กำหนดงบรายจ่ายต่อวัน (บาท)</h3>
-            <input
-              type="number"
-              value={dailyLimitInput}
-              onChange={(e) => setDailyLimitInput(e.target.value)}
-              placeholder="เช่น 500"
-              min="0"
-              step="1"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 mb-4"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDailyLimitModal(false)
-                  setDailyLimitInput('')
-                }}
-                className="flex-1 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-              >
-                ยกเลิก
-              </button>
-              <button
-                type="button"
-                onClick={saveDailyExpenseLimit}
-                className="flex-1 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
-              >
-                บันทึก
-              </button>
             </div>
           </div>
         </div>

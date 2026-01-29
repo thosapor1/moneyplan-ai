@@ -6,6 +6,7 @@ import { supabase, Profile, Transaction } from '@/lib/supabase'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 import FinancialAnalysis from '@/components/FinancialAnalysis'
 import BottomNavigation from '@/components/BottomNavigation'
+import { EXPENSE_CATEGORIES, getCategoryBudgets, setCategoryBudgets } from '@/lib/storage'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -28,6 +29,8 @@ export default function ProfilePage() {
   const profileRef = useRef<Profile>(profile)
   // เก็บค่าที่กำลังแก้เป็น string เพื่อให้ผู้ใช้ลบ 0 ได้ (แสดงช่องว่างแล้วค่อยแปลงเป็นตัวเลขตอน blur)
   const [numericInputs, setNumericInputs] = useState<Partial<Record<keyof Profile, string>>>({})
+  // งบรายจ่ายรายเดือนต่อหมวด (จาก localStorage)
+  const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
 
   // Keep profileRef in sync with profile state
   useEffect(() => {
@@ -97,6 +100,12 @@ export default function ProfilePage() {
   useEffect(() => {
     loadProfile()
   }, [loadProfile])
+
+  // โหลดงบรายจ่ายต่อหมวดจาก localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    setCategoryBudgetsState(getCategoryBudgets())
+  }, [])
 
   const saveProfile = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -426,6 +435,42 @@ export default function ProfilePage() {
                     step="0.01"
                   />
               </div>
+            </div>
+          </div>
+
+          {/* งบรายจ่ายรายเดือนต่อหมวด */}
+          <div className="bg-white p-4 rounded-lg shadow-sm">
+            <div className="mb-4 pb-3 border-b border-gray-200">
+              <h3 className="text-base font-bold text-gray-800">งบรายจ่ายรายเดือนต่อหมวด (บาท)</h3>
+              <p className="text-xs text-gray-500 mt-1">กำหนดงบสูงสุดต่อเดือนในแต่ละหมวด รายจ่ายที่เกินจะไม่ถูกตัดจากยอดรวม แต่ช่วยให้ติดตามได้</p>
+            </div>
+            <div className="space-y-3">
+              {EXPENSE_CATEGORIES.map((cat) => {
+                const value = categoryBudgets[cat] ?? 0
+                return (
+                  <div key={cat} className="flex items-center gap-3">
+                    <label className="flex-1 text-sm text-gray-700 min-w-0 truncate" title={cat}>
+                      {cat}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={value === 0 ? '' : value}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        const num = v === '' ? 0 : parseFloat(v) || 0
+                        const next = { ...categoryBudgets, [cat]: num }
+                        setCategoryBudgetsState(next)
+                        setCategoryBudgets(next)
+                      }}
+                      placeholder="0"
+                      className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-right"
+                    />
+                    <span className="text-xs text-gray-400 w-6">บาท</span>
+                  </div>
+                )
+              })}
             </div>
           </div>
 
