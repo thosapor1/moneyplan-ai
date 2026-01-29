@@ -112,7 +112,10 @@ export default function TransactionsPage() {
 
   const isInSelectedCategories = (cat: string) => {
     const c = (cat || '').trim()
-    const effective = c === '' || !expenseCategories.includes(c) ? UNKNOWN_CATEGORY_LABEL : c
+    const effective =
+      c === '' || !(expenseCategories as readonly string[]).includes(c)
+        ? UNKNOWN_CATEGORY_LABEL
+        : c
     return visibleCategories.length === 0 || visibleCategories.includes(effective)
   }
   const expenseToday = transactions
@@ -289,7 +292,10 @@ export default function TransactionsPage() {
     if (tDate < monthStart || tDate > monthEnd) return false
     if (visibleCategories.length === 0) return true
     const cat = (t.category || '').trim()
-    const effectiveCat = cat === '' || !expenseCategories.includes(cat) ? UNKNOWN_CATEGORY_LABEL : cat
+    const effectiveCat =
+      cat === '' || !(expenseCategories as readonly string[]).includes(cat)
+        ? UNKNOWN_CATEGORY_LABEL
+        : cat
     return visibleCategories.includes(effectiveCat)
   })
 
