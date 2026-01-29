@@ -20,6 +20,7 @@ export default function DashboardPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [chartPeriod, setChartPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly')
   const [hoveredPoint, setHoveredPoint] = useState<{ label: string; income: number; expense: number; x: number; y: number } | null>(null)
+  const [hoveredCumulativePoint, setHoveredCumulativePoint] = useState<{ label: string; sum: number; x: number; y: number } | null>(null)
 
   const checkUser = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -278,6 +279,23 @@ export default function DashboardPage() {
     ...trendData.map(d => Math.max(d.income, d.expense)),
     1
   )
+  const trendWithNet = trendData.map(d => ({ ...d, net: d.income - d.expense }))
+  const maxAbsNet = Math.max(...trendWithNet.map(d => Math.abs(d.net)), 1)
+  const cumulativeNet = trendWithNet.reduce<{ sum: number; label: string; labelShort: string }[]>(
+    (acc, d, i) => [...acc, { sum: (acc[i - 1]?.sum ?? 0) + d.net, label: d.label, labelShort: d.labelShort }],
+    []
+  )
+  const maxAbsCumulative = Math.max(...cumulativeNet.map(c => Math.abs(c.sum)), 1)
+
+  // Plot area (SVG coords) – ใช้ normalize ความสูงแท่งและเส้น
+  const PLOT_X_MIN = 10
+  const PLOT_X_MAX = 390
+  const PLOT_WIDTH = PLOT_X_MAX - PLOT_X_MIN
+  const PLOT_Y_TOP = 10
+  const PLOT_Y_BOTTOM = 110
+  const PLOT_HEIGHT = PLOT_Y_BOTTOM - PLOT_Y_TOP
+  const NET_BASELINE_Y = PLOT_Y_TOP + PLOT_HEIGHT / 2
+  const NET_HALF_RANGE = PLOT_HEIGHT / 2
 
   // Category icons
   const getCategoryIcon = (category: string, type: 'income' | 'expense') => {
@@ -416,201 +434,261 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Trend Graph */}
-        {trendData.length > 0 && (
-          <div className="bg-white p-4 rounded-lg shadow-sm mb-4">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-sm font-semibold text-gray-800">แนวโน้มรายรับรายจ่าย</h3>
-              <select
-                value={chartPeriod}
-                onChange={(e) => setChartPeriod(e.target.value as 'daily' | 'weekly' | 'monthly' | 'yearly')}
-                className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
-              >
-                <option value="daily">รายวัน (30 วัน)</option>
-                <option value="weekly">รายสัปดาห์ (12 สัปดาห์)</option>
-                <option value="monthly">รายเดือน (12 เดือน)</option>
-                <option value="yearly">รายปี (5 ปี)</option>
-              </select>
-            </div>
-            <div className="h-40 relative" onMouseLeave={() => setHoveredPoint(null)}>
-              <svg className="w-full h-full" viewBox="-10 -10 420 140" preserveAspectRatio="xMidYMid meet">
-                {/* Grid lines */}
-                {[0, 30, 60, 90, 120].map((y) => (
-                  <line
-                    key={y}
-                    x1="10"
-                    y1={10 + y}
-                    x2="390"
-                    y2={10 + y}
-                    stroke="#e5e7eb"
-                    strokeWidth="0.5"
-                  />
-                ))}
-                
-                {/* Income line (green) */}
-                {trendData.length > 1 && (
-                  <polyline
-                    points={trendData.map((d, i) => {
-                      const x = 10 + (i / (trendData.length - 1)) * 380
-                      const y = 10 + (100 - (d.income / maxTrendValue) * 100)
-                      return `${x},${y}`
-                    }).join(' ')}
-                    fill="none"
-                    stroke="#10b981"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                )}
-                
-                {/* Expense line (red) */}
-                {trendData.length > 1 && (
-                  <polyline
-                    points={trendData.map((d, i) => {
-                      const x = 10 + (i / (trendData.length - 1)) * 380
-                      const y = 10 + (100 - (d.expense / maxTrendValue) * 100)
-                      return `${x},${y}`
-                    }).join(' ')}
-                    fill="none"
-                    stroke="#ef4444"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+        {/* Trend Graph – Grouped Bar + Net Line */}
+        {trendData.length > 0 && (() => {
+          const n = trendData.length
+          const bandWidth = n > 1 ? PLOT_WIDTH / n : PLOT_WIDTH
+          const gap = 4
+          const barWidth = (bandWidth - gap) / 2
+          const BAR_COLOR_INCOME = '#10b981'
+          const BAR_COLOR_EXPENSE = '#ef4444'
+          const NET_LINE_COLOR = '#6366f1'
+          const BASELINE_COLOR = '#9ca3af'
+
+          return (
+            <div className="bg-white p-4 rounded-lg shadow-sm mb-4">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-gray-800">แนวโน้มรายรับรายจ่าย</h3>
+                <select
+                  value={chartPeriod}
+                  onChange={(e) => setChartPeriod(e.target.value as 'daily' | 'weekly' | 'monthly' | 'yearly')}
+                  className="px-3 py-1 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
+                >
+                  <option value="daily">รายวัน (30 วัน)</option>
+                  <option value="weekly">รายสัปดาห์ (12 สัปดาห์)</option>
+                  <option value="monthly">รายเดือน (12 เดือน)</option>
+                  <option value="yearly">รายปี (5 ปี)</option>
+                </select>
+              </div>
+              <div className="h-40 relative" onMouseLeave={() => setHoveredPoint(null)}>
+                <svg className="w-full h-full" viewBox="-10 -10 420 140" preserveAspectRatio="xMidYMid meet">
+                  {/* Grid lines */}
+                  {[0, 30, 60, 90, 120].map((y) => (
+                    <line key={y} x1={PLOT_X_MIN} y1={10 + y} x2={PLOT_X_MAX} y2={10 + y} stroke="#e5e7eb" strokeWidth="0.5" />
+                  ))}
+
+                  {/* Baseline 0 (สุทธิ) */}
+                  <line x1={PLOT_X_MIN} y1={NET_BASELINE_Y} x2={PLOT_X_MAX} y2={NET_BASELINE_Y} stroke={BASELINE_COLOR} strokeWidth="0.8" strokeDasharray="4 2" />
+
+                  {/* Grouped bars */}
+                  {trendWithNet.map((d, i) => {
+                    const bandLeft = PLOT_X_MIN + i * bandWidth
+                    const bandCenter = bandLeft + bandWidth / 2
+                    const incomeBarX = bandCenter - barWidth - gap / 2
+                    const expenseBarX = bandCenter + gap / 2
+                    const incomeHeight = (d.income / maxTrendValue) * PLOT_HEIGHT
+                    const expenseHeight = (d.expense / maxTrendValue) * PLOT_HEIGHT
+                    return (
+                      <g key={i}>
+                        <rect x={incomeBarX} y={PLOT_Y_BOTTOM - incomeHeight} width={barWidth} height={incomeHeight} fill={BAR_COLOR_INCOME} rx="2" />
+                        <rect x={expenseBarX} y={PLOT_Y_BOTTOM - expenseHeight} width={barWidth} height={expenseHeight} fill={BAR_COLOR_EXPENSE} rx="2" />
+                      </g>
+                    )
+                  })}
+
+                  {/* Net line (polyline) */}
+                  {trendWithNet.length > 0 && (
+                    <polyline
+                      points={trendWithNet.map((d, i) => {
+                        const x = n > 1 ? PLOT_X_MIN + (i / (n - 1)) * PLOT_WIDTH : PLOT_X_MIN + PLOT_WIDTH / 2
+                        const netNorm = d.net / maxAbsNet
+                        const y = NET_BASELINE_Y - netNorm * NET_HALF_RANGE
+                        return `${x},${y}`
+                      }).join(' ')}
+                      fill="none"
+                      stroke={NET_LINE_COLOR}
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                  {trendWithNet.length > 0 && trendWithNet.map((d, i) => {
+                    const x = n > 1 ? PLOT_X_MIN + (i / (n - 1)) * PLOT_WIDTH : PLOT_X_MIN + PLOT_WIDTH / 2
+                    const netNorm = d.net / maxAbsNet
+                    const y = NET_BASELINE_Y - netNorm * NET_HALF_RANGE
+                    return <circle key={i} cx={x} cy={y} r="3" fill={NET_LINE_COLOR} stroke="white" strokeWidth="1.5" style={{ pointerEvents: 'none' }} />
+                  })}
+
+                  {/* Hover areas (invisible rect per band) */}
+                  {trendWithNet.map((d, i) => {
+                    const bandLeft = PLOT_X_MIN + i * bandWidth
+                    const net = d.income - d.expense
+                    const tooltipYPercent = net >= 0 ? 25 : 75
+                    return (
+                      <rect
+                        key={i}
+                        x={bandLeft}
+                        y={PLOT_Y_TOP}
+                        width={bandWidth}
+                        height={PLOT_HEIGHT}
+                        fill="transparent"
+                        style={{ cursor: 'pointer' }}
+                        onMouseEnter={() => {
+                          const xPercent = ((bandLeft + bandWidth / 2 - PLOT_X_MIN) / PLOT_WIDTH) * 100
+                          setHoveredPoint({
+                            label: d.label,
+                            income: d.income,
+                            expense: d.expense,
+                            x: xPercent,
+                            y: tooltipYPercent
+                          })
+                        }}
+                      />
+                    )
+                  })}
+                </svg>
+
+                {/* Tooltip */}
+                {hoveredPoint && (
+                  <div
+                    className="absolute bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg z-10 pointer-events-none"
+                    style={{
+                      left: `${hoveredPoint.x}%`,
+                      top: `${hoveredPoint.y}%`,
+                      transform: 'translate(-50%, -100%)',
+                      marginTop: '-8px',
+                      minWidth: '140px'
+                    }}
+                  >
+                    <div className="font-semibold mb-2 text-center border-b border-gray-700 pb-1">{hoveredPoint.label}</div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-sm bg-green-500" />
+                          <span>รายรับ</span>
+                        </div>
+                        <span className="font-medium">{hoveredPoint.income.toLocaleString('th-TH')} บาท</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-sm bg-red-500" />
+                          <span>รายจ่าย</span>
+                        </div>
+                        <span className="font-medium">{hoveredPoint.expense.toLocaleString('th-TH')} บาท</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 pt-1 border-t border-gray-700">
+                        <span className="text-gray-300">สุทธิ</span>
+                        <span className={`font-semibold ${(hoveredPoint.income - hoveredPoint.expense) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {(hoveredPoint.income - hoveredPoint.expense).toLocaleString('th-TH')} บาท
+                        </span>
+                      </div>
+                    </div>
+                    <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
+                      <div className="border-4 border-transparent border-t-gray-800" />
+                    </div>
+                  </div>
                 )}
 
-                {/* Interactive points for hover */}
-                {trendData.map((d, i) => {
-                  const x = trendData.length > 1 ? 10 + (i / (trendData.length - 1)) * 380 : 200
-                  const incomeY = 10 + (100 - (d.income / maxTrendValue) * 100)
-                  const expenseY = 10 + (100 - (d.expense / maxTrendValue) * 100)
-                  
-                  return (
-                    <g key={i}>
-                      {/* Income point with larger hit area */}
-                      <circle
-                        cx={x}
-                        cy={incomeY}
-                        r="10"
-                        fill="transparent"
-                        style={{ cursor: 'pointer' }}
-                        onMouseEnter={() => {
-                          const xPercent = ((x - 10) / 380) * 100
-                          const yPercent = ((incomeY - 10) / 100) * 100
-                          setHoveredPoint({
-                            label: d.label,
-                            income: d.income,
-                            expense: d.expense,
-                            x: xPercent,
-                            y: yPercent
-                          })
-                        }}
-                      />
-                      <circle
-                        cx={x}
-                        cy={incomeY}
-                        r="5"
-                        fill="#10b981"
-                        stroke="white"
-                        strokeWidth="2"
-                        style={{ pointerEvents: 'none' }}
-                      />
-                      {/* Expense point with larger hit area */}
-                      <circle
-                        cx={x}
-                        cy={expenseY}
-                        r="10"
-                        fill="transparent"
-                        style={{ cursor: 'pointer' }}
-                        onMouseEnter={() => {
-                          const xPercent = ((x - 10) / 380) * 100
-                          const yPercent = ((expenseY - 10) / 100) * 100
-                          setHoveredPoint({
-                            label: d.label,
-                            income: d.income,
-                            expense: d.expense,
-                            x: xPercent,
-                            y: yPercent
-                          })
-                        }}
-                      />
-                      <circle
-                        cx={x}
-                        cy={expenseY}
-                        r="5"
-                        fill="#ef4444"
-                        stroke="white"
-                        strokeWidth="2"
-                        style={{ pointerEvents: 'none' }}
-                      />
-                    </g>
-                  )
-                })}
-              </svg>
-              
-              {/* Tooltip */}
-              {hoveredPoint && (
-                <div
-                  className="absolute bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg z-10 pointer-events-none"
-                  style={{
-                    left: `${hoveredPoint.x}%`,
-                    top: `${hoveredPoint.y}%`,
-                    transform: 'translate(-50%, -100%)',
-                    marginTop: '-8px',
-                    minWidth: '140px'
-                  }}
-                >
-                  <div className="font-semibold mb-2 text-center border-b border-gray-700 pb-1">
-                    {hoveredPoint.label}
-                  </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                        <span>รายรับ</span>
-                      </div>
-                      <span className="font-medium">{hoveredPoint.income.toLocaleString('th-TH')} บาท</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                        <span>รายจ่าย</span>
-                      </div>
-                      <span className="font-medium">{hoveredPoint.expense.toLocaleString('th-TH')} บาท</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 pt-1 border-t border-gray-700">
-                      <span className="text-gray-300">คงเหลือ</span>
-                      <span className={`font-semibold ${(hoveredPoint.income - hoveredPoint.expense) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {(hoveredPoint.income - hoveredPoint.expense).toLocaleString('th-TH')} บาท
-                      </span>
-                    </div>
-                  </div>
-                  <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
-                    <div className="border-4 border-transparent border-t-gray-800"></div>
-                  </div>
+                {/* X labels */}
+                <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-gray-500 px-1">
+                  {trendData.map((d, i) => (
+                    <span key={i} className="text-xs">{d.labelShort}</span>
+                  ))}
                 </div>
-              )}
-              
-              {/* Labels */}
-              <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-gray-500 px-1">
-                {trendData.map((d, i) => (
-                  <span key={i} className="text-xs">{d.labelShort}</span>
-                ))}
               </div>
+
+              {/* Legend */}
+              <div className="flex justify-center gap-4 mt-3 pt-3 border-t border-gray-200 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-2.5 rounded-sm bg-green-500" />
+                  <span className="text-sm text-gray-600">รายรับ</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-2.5 rounded-sm bg-red-500" />
+                  <span className="text-sm text-gray-600">รายจ่าย</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-0.5 rounded-full" style={{ background: NET_LINE_COLOR }} />
+                  <span className="text-sm text-gray-600">สุทธิ</span>
+                </div>
+              </div>
+
+              {/* คงเหลือสะสมในช่วง */}
+              {cumulativeNet.length > 0 && (() => {
+                const cumN = cumulativeNet.length
+                const cumBandWidth = cumN > 1 ? PLOT_WIDTH / cumN : PLOT_WIDTH
+                return (
+                  <div className="mt-4 pt-4 border-t border-gray-200" onMouseLeave={() => setHoveredCumulativePoint(null)}>
+                    <h4 className="text-xs font-semibold text-gray-600 mb-2">คงเหลือสะสมในช่วง</h4>
+                    <div className="h-[120px] relative">
+                      <svg className="w-full h-full" viewBox="-10 -10 420 140" preserveAspectRatio="xMidYMid meet">
+                        {[0, 30, 60, 90, 120].map((y) => (
+                          <line key={y} x1={PLOT_X_MIN} y1={10 + y} x2={PLOT_X_MAX} y2={10 + y} stroke="#e5e7eb" strokeWidth="0.5" />
+                        ))}
+                        <line x1={PLOT_X_MIN} y1={NET_BASELINE_Y} x2={PLOT_X_MAX} y2={NET_BASELINE_Y} stroke={BASELINE_COLOR} strokeWidth="0.8" strokeDasharray="4 2" />
+                        <polyline
+                          points={cumulativeNet.map((c, i) => {
+                            const x = cumN > 1 ? PLOT_X_MIN + (i / (cumN - 1)) * PLOT_WIDTH : PLOT_X_MIN + PLOT_WIDTH / 2
+                            const norm = maxAbsCumulative > 0 ? c.sum / maxAbsCumulative : 0
+                            const y = NET_BASELINE_Y - norm * NET_HALF_RANGE
+                            return `${x},${y}`
+                          }).join(' ')}
+                          fill="none"
+                          stroke={NET_LINE_COLOR}
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        {cumulativeNet.map((c, i) => {
+                          const x = cumN > 1 ? PLOT_X_MIN + (i / (cumN - 1)) * PLOT_WIDTH : PLOT_X_MIN + PLOT_WIDTH / 2
+                          const norm = maxAbsCumulative > 0 ? c.sum / maxAbsCumulative : 0
+                          const y = NET_BASELINE_Y - norm * NET_HALF_RANGE
+                          return <circle key={i} cx={x} cy={y} r="2.5" fill={NET_LINE_COLOR} style={{ pointerEvents: 'none' }} />
+                        })}
+                        {/* Hover areas for cumulative tooltip */}
+                        {cumulativeNet.map((c, i) => {
+                          const bandLeft = PLOT_X_MIN + i * cumBandWidth
+                          const xPercent = ((bandLeft + cumBandWidth / 2 - PLOT_X_MIN) / PLOT_WIDTH) * 100
+                          const yPercent = 40
+                          return (
+                            <rect
+                              key={i}
+                              x={bandLeft}
+                              y={PLOT_Y_TOP}
+                              width={cumBandWidth}
+                              height={PLOT_HEIGHT}
+                              fill="transparent"
+                              style={{ cursor: 'pointer' }}
+                              onMouseEnter={() => setHoveredCumulativePoint({ label: c.label, sum: c.sum, x: xPercent, y: yPercent })}
+                            />
+                          )
+                        })}
+                      </svg>
+                      {hoveredCumulativePoint && (
+                        <div
+                          className="absolute bg-gray-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg z-10 pointer-events-none"
+                          style={{
+                            left: `${hoveredCumulativePoint.x}%`,
+                            top: `${hoveredCumulativePoint.y}%`,
+                            transform: 'translate(-50%, -100%)',
+                            marginTop: '-8px',
+                            minWidth: '120px'
+                          }}
+                        >
+                          <div className="font-semibold mb-1 text-center border-b border-gray-700 pb-1">{hoveredCumulativePoint.label}</div>
+                          <div className="flex items-center justify-between gap-3 pt-1">
+                            <span className="text-gray-300">สะสม</span>
+                            <span className={`font-semibold ${hoveredCumulativePoint.sum >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                              {hoveredCumulativePoint.sum.toLocaleString('th-TH')} บาท
+                            </span>
+                          </div>
+                          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-full">
+                            <div className="border-4 border-transparent border-t-gray-800" />
+                          </div>
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 flex justify-between text-xs text-gray-500 px-1">
+                        {cumulativeNet.map((c, i) => (
+                          <span key={i} className="text-xs">{c.labelShort}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
-            {/* Legend */}
-            <div className="flex justify-center gap-4 mt-3 pt-3 border-t border-gray-200">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-0.5 bg-green-500"></div>
-                <span className="text-sm text-gray-600">รายรับ</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-0.5 bg-red-500"></div>
-                <span className="text-sm text-gray-600">รายจ่าย</span>
-              </div>
-            </div>
-          </div>
-        )}
+          )
+        })()}
 
         {/* Financial Analysis from Profile and Transactions */}
         {profile && (

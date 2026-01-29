@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import AppInitializer from '@/components/AppInitializer'
@@ -18,13 +18,19 @@ export const metadata: Metadata = {
       { url: '/icon-192x192.png', sizes: '192x192', type: 'image/png' },
     ],
   },
-  themeColor: '#1f2937',
-  viewport: 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'MoneyPlan AI',
   },
+}
+
+export const viewport: Viewport = {
+  themeColor: '#1f2937',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 }
 
 export default function RootLayout({
@@ -36,7 +42,6 @@ export default function RootLayout({
     <html lang="th">
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#1f2937" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="MoneyPlan AI" />
