@@ -69,8 +69,7 @@ npm run dev
    - ในหน้า Project Settings → Environment Variables
    - เพิ่มตัวแปรต่อไปนี้:
      ```
-     NEXT_PUBLIC_SUPABASE_URL=https://lcibdxdpvzzprhsukwkb.supabase.co
-     NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxjaWJkeGRwdnp6cHJoc3Vrd2tiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgyOTk0ODEsImV4cCI6MjA4Mzg3NTQ4MX0.cYQNyO-wQJpxDlXcWx0Ff9IBfemwRkSt9UySoB69FAk
+     NEXT_PUBLIC_SUPABASE_URL=     NEXT_PUBLIC_SUPABASE_ANON_KEY=
      ```
    - เลือก Environment: Production, Preview, Development (หรือเลือกทั้งหมด)
 
