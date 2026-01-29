@@ -7,12 +7,17 @@ import BottomNavigation from '@/components/BottomNavigation'
 import CategoryIcon from '@/components/CategoryIcon'
 import { format, startOfMonth, endOfMonth } from 'date-fns'
 
+const DAILY_EXPENSE_LIMIT_KEY = 'moneyplan_daily_expense_limit'
+
 export default function TransactionsPage() {
   const router = useRouter()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [showModal, setShowModal] = useState(false)
+  const [showDailyLimitModal, setShowDailyLimitModal] = useState(false)
+  const [dailyExpenseLimit, setDailyExpenseLimit] = useState<number>(0)
+  const [dailyLimitInput, setDailyLimitInput] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [formData, setFormData] = useState({
     type: 'expense' as 'income' | 'expense',
@@ -86,6 +91,36 @@ export default function TransactionsPage() {
   useEffect(() => {
     loadTransactions()
   }, [loadTransactions])
+
+  // โหลดงบรายจ่ายต่อวันจาก localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const saved = localStorage.getItem(DAILY_EXPENSE_LIMIT_KEY)
+    if (saved) {
+      const num = Number(saved)
+      if (!isNaN(num) && num >= 0) setDailyExpenseLimit(num)
+    }
+  }, [])
+
+  const saveDailyExpenseLimit = () => {
+    const num = Number(dailyLimitInput)
+    if (isNaN(num) || num < 0) {
+      alert('กรุณากรอกตัวเลขที่มากกว่าหรือเท่ากับ 0')
+      return
+    }
+    setDailyExpenseLimit(num)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(DAILY_EXPENSE_LIMIT_KEY, String(num))
+    }
+    setShowDailyLimitModal(false)
+    setDailyLimitInput('')
+  }
+
+  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const expenseToday = transactions
+    .filter((t) => t.type === 'expense' && t.date === todayStr)
+    .reduce((sum, t) => sum + Number(t.amount), 0)
+  const remainingToday = dailyExpenseLimit > 0 ? dailyExpenseLimit - expenseToday : 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -184,7 +219,7 @@ export default function TransactionsPage() {
       type: transaction.type,
       amount: transaction.amount.toString(),
       category: transaction.category || '',
-      description: (transaction as any).description || '',
+      description: transaction.description || '',
       date: transaction.date,
     })
   }
@@ -305,6 +340,60 @@ export default function TransactionsPage() {
           </button>
         </div>
 
+        {/* งบรายจ่ายต่อวัน */}
+        <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
+          {dailyExpenseLimit <= 0 ? (
+            <button
+              type="button"
+              onClick={() => {
+                setDailyLimitInput('')
+                setShowDailyLimitModal(true)
+              }}
+              className="w-full py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600 transition-colors flex items-center justify-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              กำหนดงบรายจ่ายต่อวัน
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-600">งบรายจ่ายต่อวัน</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDailyLimitInput(String(dailyExpenseLimit))
+                    setShowDailyLimitModal(true)
+                  }}
+                  className="text-blue-600 text-sm hover:underline"
+                >
+                  แก้ไข
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-gray-50 rounded-lg p-2">
+                  <p className="text-xs text-gray-500">งบวันนี้</p>
+                  <p className="text-sm font-semibold text-gray-800">{dailyExpenseLimit.toLocaleString('th-TH')}</p>
+                  <p className="text-xs text-gray-400">บาท</p>
+                </div>
+                <div className="bg-red-50 rounded-lg p-2">
+                  <p className="text-xs text-gray-500">ใช้ไปวันนี้</p>
+                  <p className="text-sm font-semibold text-red-600">{expenseToday.toLocaleString('th-TH')}</p>
+                  <p className="text-xs text-gray-400">บาท</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-2">
+                  <p className="text-xs text-gray-500">คงเหลือ</p>
+                  <p className={`text-sm font-semibold ${remainingToday >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {remainingToday.toLocaleString('th-TH')}
+                  </p>
+                  <p className="text-xs text-gray-400">บาท</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Add Item Button */}
         <div className="mb-4">
           <button
@@ -350,6 +439,11 @@ export default function TransactionsPage() {
                     <p className="text-xs text-gray-500">
                       {format(new Date(transaction.date), 'yyyy-MM-dd')}
                     </p>
+                    {transaction.description && transaction.description.trim() !== '' && (
+                      <p className="text-xs text-gray-500 truncate mt-0.5" title={transaction.description}>
+                        {transaction.description}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -499,6 +593,44 @@ export default function TransactionsPage() {
                 บันทึก
               </button>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal กำหนดงบรายจ่ายต่อวัน */}
+      {showDailyLimitModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">กำหนดงบรายจ่ายต่อวัน (บาท)</h3>
+            <input
+              type="number"
+              value={dailyLimitInput}
+              onChange={(e) => setDailyLimitInput(e.target.value)}
+              placeholder="เช่น 500"
+              min="0"
+              step="1"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-gray-900 mb-4"
+              autoFocus
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDailyLimitModal(false)
+                  setDailyLimitInput('')
+                }}
+                className="flex-1 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={saveDailyExpenseLimit}
+                className="flex-1 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+              >
+                บันทึก
+              </button>
             </div>
           </div>
         </div>

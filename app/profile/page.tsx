@@ -26,6 +26,8 @@ export default function ProfilePage() {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const initialProfileRef = useRef<Profile | null>(null)
   const profileRef = useRef<Profile>(profile)
+  // เก็บค่าที่กำลังแก้เป็น string เพื่อให้ผู้ใช้ลบ 0 ได้ (แสดงช่องว่างแล้วค่อยแปลงเป็นตัวเลขตอน blur)
+  const [numericInputs, setNumericInputs] = useState<Partial<Record<keyof Profile, string>>>({})
 
   // Keep profileRef in sync with profile state
   useEffect(() => {
@@ -152,6 +154,23 @@ export default function ProfilePage() {
     saveProfile()
   }
 
+  type NumericField = 'fixed_expense' | 'variable_expense' | 'saving' | 'investment' | 'liquid_assets' | 'total_assets' | 'total_liabilities'
+  const getNumericDisplay = (field: NumericField) =>
+    numericInputs[field] !== undefined ? numericInputs[field] : String(profile[field] ?? 0)
+  const handleNumericChange = (field: NumericField, e: React.ChangeEvent<HTMLInputElement>) =>
+    setNumericInputs((prev) => ({ ...prev, [field]: e.target.value }))
+  const handleNumericBlur = (field: NumericField) => {
+    const raw = numericInputs[field] ?? profile[field] ?? 0
+    const num = typeof raw === 'string' ? (parseFloat(raw) || 0) : Number(raw) || 0
+    handleFieldChange(field, num)
+    setNumericInputs((prev) => {
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
+    handleFieldBlur()
+  }
+
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
@@ -251,9 +270,9 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="number"
-                    value={profile.fixed_expense ?? 0}
-                    onChange={(e) => handleFieldChange('fixed_expense', Number(e.target.value) || 0)}
-                    onBlur={handleFieldBlur}
+                    value={getNumericDisplay('fixed_expense')}
+                    onChange={(e) => handleNumericChange('fixed_expense', e)}
+                    onBlur={() => handleNumericBlur('fixed_expense')}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
                     min="0"
                     step="0.01"
@@ -274,9 +293,9 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="number"
-                    value={profile.variable_expense ?? 0}
-                    onChange={(e) => handleFieldChange('variable_expense', Number(e.target.value) || 0)}
-                    onBlur={handleFieldBlur}
+                    value={getNumericDisplay('variable_expense')}
+                    onChange={(e) => handleNumericChange('variable_expense', e)}
+                    onBlur={() => handleNumericBlur('variable_expense')}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
                     min="0"
                     step="0.01"
@@ -297,9 +316,9 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="number"
-                    value={profile.saving ?? 0}
-                    onChange={(e) => handleFieldChange('saving', Number(e.target.value) || 0)}
-                    onBlur={handleFieldBlur}
+                    value={getNumericDisplay('saving')}
+                    onChange={(e) => handleNumericChange('saving', e)}
+                    onBlur={() => handleNumericBlur('saving')}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
                     min="0"
                     step="0.01"
@@ -320,9 +339,9 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="number"
-                    value={profile.investment ?? 0}
-                    onChange={(e) => handleFieldChange('investment', Number(e.target.value) || 0)}
-                    onBlur={handleFieldBlur}
+                    value={getNumericDisplay('investment')}
+                    onChange={(e) => handleNumericChange('investment', e)}
+                    onBlur={() => handleNumericBlur('investment')}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
                     min="0"
                     step="0.01"
@@ -352,14 +371,14 @@ export default function ProfilePage() {
                   </div>
                 </label>
                   <input
-                  type="number"
-                  value={profile.liquid_assets ?? 0}
-                  onChange={(e) => handleFieldChange('liquid_assets', Number(e.target.value) || 0)}
-                  onBlur={handleFieldBlur}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
-                  min="0"
-                  step="0.01"
-                />
+                    type="number"
+                    value={getNumericDisplay('liquid_assets')}
+                    onChange={(e) => handleNumericChange('liquid_assets', e)}
+                    onBlur={() => handleNumericBlur('liquid_assets')}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                    min="0"
+                    step="0.01"
+                  />
               </div>
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
@@ -375,14 +394,14 @@ export default function ProfilePage() {
                   </div>
                 </label>
                   <input
-                  type="number"
-                  value={profile.total_assets ?? 0}
-                  onChange={(e) => handleFieldChange('total_assets', Number(e.target.value) || 0)}
-                  onBlur={handleFieldBlur}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
-                  min="0"
-                  step="0.01"
-                />
+                    type="number"
+                    value={getNumericDisplay('total_assets')}
+                    onChange={(e) => handleNumericChange('total_assets', e)}
+                    onBlur={() => handleNumericBlur('total_assets')}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                    min="0"
+                    step="0.01"
+                  />
               </div>
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
@@ -398,14 +417,14 @@ export default function ProfilePage() {
                   </div>
                 </label>
                   <input
-                  type="number"
-                  value={profile.total_liabilities ?? 0}
-                  onChange={(e) => handleFieldChange('total_liabilities', Number(e.target.value) || 0)}
-                  onBlur={handleFieldBlur}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
-                  min="0"
-                  step="0.01"
-                />
+                    type="number"
+                    value={getNumericDisplay('total_liabilities')}
+                    onChange={(e) => handleNumericChange('total_liabilities', e)}
+                    onBlur={() => handleNumericBlur('total_liabilities')}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                    min="0"
+                    step="0.01"
+                  />
               </div>
             </div>
           </div>
