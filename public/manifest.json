@@ -12,22 +12,22 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icon-192x192.png",
+      "src": "/moneyplan-ai-icon.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icon-512x512.png",
+      "src": "/moneyplan-ai-icon.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/icon.svg",
+      "src": "/moneyplan-ai-icon.png",
       "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "screenshots": [],
@@ -37,14 +37,14 @@
       "short_name": "Dashboard",
       "description": "ดูภาพรวมการเงิน",
       "url": "/dashboard",
-      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/moneyplan-ai-icon.png", "sizes": "192x192" }]
     },
     {
       "name": "รายรับรายจ่าย",
       "short_name": "Transactions",
       "description": "จัดการรายรับรายจ่าย",
       "url": "/transactions",
-      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/moneyplan-ai-icon.png", "sizes": "192x192" }]
     }
   ]
 }
