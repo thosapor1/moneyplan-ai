@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation'
 import { supabase, Transaction, fetchCategoryBudgets } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
 import CategoryIcon from '@/components/CategoryIcon'
-import { format, startOfMonth, endOfMonth, getDate } from 'date-fns'
+import { format } from 'date-fns'
 import { EXPENSE_CATEGORIES, getVisibleCategories, setVisibleCategories } from '@/lib/storage'
+import { getDaysInMonth, getMonthRange } from '@/lib/finance'
 
 export default function TransactionsPage() {
   const router = useRouter()
@@ -19,6 +20,8 @@ export default function TransactionsPage() {
   const [visibleCategories, setVisibleCategoriesState] = useState<string[]>([])
   /** งบรายเดือนต่อหมวด (จาก DB) */
   const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
+  /** วันสิ้นเดือนที่กำหนดเอง (0 = ตามปฏิทิน, 1-31) */
+  const [monthEndDay, setMonthEndDayState] = useState(0)
   const [formData, setFormData] = useState({
     type: 'expense' as 'income' | 'expense',
     amount: '',
@@ -69,6 +72,13 @@ export default function TransactionsPage() {
 
       const budgets = await fetchCategoryBudgets(session.user.id)
       setCategoryBudgetsState(budgets)
+
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('month_end_day')
+        .eq('id', session.user.id)
+        .single()
+      setMonthEndDayState(profileData?.month_end_day ?? 0)
     } catch (error) {
       console.error('Error loading transactions:', error)
       alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + (error as any).message || 'ไม่สามารถโหลดข้อมูลได้')
@@ -87,7 +97,7 @@ export default function TransactionsPage() {
     setVisibleCategoriesState(getVisibleCategories())
   }, [])
 
-  // โหลดงบรายเดือนใหม่เมื่อกลับมาที่แท็บ (เช่น หลังแก้ในโปรไฟล์)
+  // โหลดงบรายเดือนและวันสิ้นเดือนใหม่เมื่อกลับมาที่แท็บ (เช่น หลังแก้ในโปรไฟล์)
   useEffect(() => {
     if (typeof window === 'undefined') return
     const onFocus = async () => {
@@ -95,6 +105,12 @@ export default function TransactionsPage() {
       if (session) {
         const budgets = await fetchCategoryBudgets(session.user.id)
         setCategoryBudgetsState(budgets)
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('month_end_day')
+          .eq('id', session.user.id)
+          .single()
+        setMonthEndDayState(profileData?.month_end_day ?? 0)
       }
     }
     window.addEventListener('focus', onFocus)
@@ -114,7 +130,7 @@ export default function TransactionsPage() {
     (sum, cat) => sum + (categoryBudgets[cat] ?? 0),
     0
   )
-  const daysInCurrentMonth = getDate(endOfMonth(new Date()))
+  const daysInCurrentMonth = getDaysInMonth(new Date(), monthEndDay)
   const dailyBudgetFromMonthly =
     daysInCurrentMonth > 0 ? monthlyTotalForDaily / daysInCurrentMonth : 0
 
@@ -292,12 +308,12 @@ export default function TransactionsPage() {
   const currentMonthName = monthNames[selectedMonth.getMonth()]
   const currentYear = selectedMonth.getFullYear() + 543
 
-  // Filter transactions by selected month and visible categories
+  // Filter transactions by ช่วงเดือนเดียวกันกับ Dashboard (ตามวันสิ้นเดือนที่กำหนด) และหมวดที่เลือก
+  const monthRange = getMonthRange(selectedMonth, monthEndDay)
+  const rangeStartStr = format(monthRange.start, 'yyyy-MM-dd')
+  const rangeEndStr = format(monthRange.end, 'yyyy-MM-dd')
   const filteredTransactions = transactions.filter(t => {
-    const tDate = new Date(t.date)
-    const monthStart = startOfMonth(selectedMonth)
-    const monthEnd = endOfMonth(selectedMonth)
-    if (tDate < monthStart || tDate > monthEnd) return false
+    if (t.date < rangeStartStr || t.date > rangeEndStr) return false
     if (visibleCategories.length === 0) return true
     const cat = (t.category || '').trim()
     const effectiveCat =

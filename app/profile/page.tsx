@@ -3,10 +3,11 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Profile, fetchCategoryBudgets, saveCategoryBudgets } from '@/lib/supabase'
-import { format, startOfMonth, endOfMonth } from 'date-fns'
+import { format } from 'date-fns'
 import FinancialAnalysis from '@/components/FinancialAnalysis'
 import BottomNavigation from '@/components/BottomNavigation'
 import { EXPENSE_CATEGORIES } from '@/lib/storage'
+import { getMonthRange } from '@/lib/finance'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -23,6 +24,7 @@ export default function ProfilePage() {
     liquid_assets: 0,
     total_assets: 0,
     total_liabilities: 0,
+    month_end_day: 0,
   })
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const initialProfileRef = useRef<Profile | null>(null)
@@ -54,8 +56,8 @@ export default function ProfilePage() {
       if (error && error.code !== 'PGRST116') {
         console.error('Error loading profile:', error)
       } else if (data) {
-        setProfile(data)
-        initialProfileRef.current = data
+        setProfile({ ...data, month_end_day: data.month_end_day ?? 0 })
+        initialProfileRef.current = { ...data, month_end_day: data.month_end_day ?? 0 }
       } else {
         // สร้าง profile ใหม่ถ้ายังไม่มี
         const newProfile: Profile = {
@@ -68,15 +70,16 @@ export default function ProfilePage() {
           liquid_assets: 0,
           total_assets: 0,
           total_liabilities: 0,
+          month_end_day: 0,
         }
         setProfile(newProfile)
         initialProfileRef.current = newProfile
       }
 
-      // โหลดรายได้จาก transactions ของเดือนนี้
+      // โหลดรายได้จาก transactions ตามช่วงเดือนที่กำหนด (วันสิ้นเดือนที่ตั้งไว้ เช่น 27 ม.ค.–27 ก.พ.)
       const now = new Date()
-      const start = startOfMonth(now)
-      const end = endOfMonth(now)
+      const monthEndDay = data?.month_end_day ?? 0
+      const { start, end } = getMonthRange(now, monthEndDay)
 
       const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
@@ -104,6 +107,7 @@ export default function ProfilePage() {
   useEffect(() => {
     loadProfile()
   }, [loadProfile])
+
 
   const saveProfile = async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -355,6 +359,37 @@ export default function ProfilePage() {
                   />
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* กำหนดวันสิ้นเดือน */}
+          <div className="bg-white p-4 rounded-lg shadow-sm">
+            <div className="mb-4 pb-3 border-b border-gray-200">
+              <h3 className="text-base font-bold text-gray-800">กำหนดวันสิ้นเดือน</h3>
+              <p className="text-xs text-gray-500 mt-1">ใช้สำหรับคำนวณงบรายวัน เหลืออีกกี่วันในเดือน ฯลฯ ค่าเริ่มต้น = ตามปฏิทิน (วันสุดท้ายของแต่ละเดือน)</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">วันสิ้นเดือน</label>
+              <select
+                value={profile.month_end_day ?? 0}
+                onChange={async (e) => {
+                  const v = Number(e.target.value)
+                  setProfile((prev) => ({ ...prev, month_end_day: v }))
+                  const { data: { session } } = await supabase.auth.getSession()
+                  if (session) {
+                    await supabase
+                      .from('profiles')
+                      .update({ month_end_day: v, updated_at: new Date().toISOString() })
+                      .eq('id', session.user.id)
+                  }
+                }}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
+              >
+                <option value={0}>ตามปฏิทิน (วันสุดท้ายของแต่ละเดือน)</option>
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>วันที่ {d}</option>
+                ))}
+              </select>
             </div>
           </div>
 

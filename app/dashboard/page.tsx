@@ -9,15 +9,18 @@ import {
   getCurrentBalance,
   getRemainingDaysInMonth,
   getDaysElapsedInMonth,
-  getAvgDailyExpense,
-  getDaysLeft,
-  getProjectedEndOfMonthBalance,
   getFinancialStatus,
   getTodayExpense,
   getTodayVsAvgPercent,
   getTopExpenseCategories,
   getRecentBigExpenses,
+  getMonthRange,
 } from '@/lib/finance'
+import {
+  computeVariableDailyRate,
+  computePlannedRemaining,
+  computeForecastEnd,
+} from '@/lib/forecast'
 import FinancialStatusCard from './components/FinancialStatusCard'
 import ProjectedBalanceCard from './components/ProjectedBalanceCard'
 import TodayVsAverageCard from './components/TodayVsAverageCard'
@@ -35,7 +38,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [user, setUser] = useState<any>(null)
   const [selectedMonth, setSelectedMonth] = useState(new Date())
-  const [chartPeriod, setChartPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly')
+  const [chartPeriod, setChartPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily')
   const [hoveredPoint, setHoveredPoint] = useState<{ label: string; income: number; expense: number; x: number; y: number } | null>(null)
   const [hoveredCumulativePoint, setHoveredCumulativePoint] = useState<{ label: string; sum: number; x: number; y: number } | null>(null)
 
@@ -69,12 +72,11 @@ export default function DashboardPage() {
     }
   }
 
-  const loadMonthData = useCallback(async (month: Date) => {
+  const loadMonthData = useCallback(async (month: Date, monthEndDayVal: number) => {
     if (!user) return
     
     try {
-      const start = startOfMonth(month)
-      const end = endOfMonth(month)
+      const { start, end } = getMonthRange(month, monthEndDayVal)
 
       const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
@@ -132,12 +134,21 @@ export default function DashboardPage() {
     }
   }, [user])
 
+  const monthEndDay = profile?.month_end_day ?? 0
+
   useEffect(() => {
     if (user) {
-      loadMonthData(selectedMonth)
+      loadMonthData(selectedMonth, monthEndDay)
       loadAllTransactions()
     }
-  }, [user, selectedMonth, loadMonthData, loadAllTransactions])
+  }, [user, selectedMonth, monthEndDay, loadMonthData, loadAllTransactions])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !user) return
+    const onFocus = () => loadProfile(user.id)
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [user])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -357,18 +368,40 @@ export default function DashboardPage() {
   }
 
   const now = new Date()
-  const isViewingCurrentMonth =
-    selectedMonth.getMonth() === now.getMonth() && selectedMonth.getFullYear() === now.getFullYear()
-  const daysElapsed = getDaysElapsedInMonth(selectedMonth, now)
-  const remainingDays = isViewingCurrentMonth ? getRemainingDaysInMonth(now) : 0
+  const monthRange = getMonthRange(selectedMonth, monthEndDay)
+  const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  const startDate = new Date(monthRange.start.getFullYear(), monthRange.start.getMonth(), monthRange.start.getDate()).getTime()
+  const endDate = new Date(monthRange.end.getFullYear(), monthRange.end.getMonth(), monthRange.end.getDate()).getTime()
+  const isViewingCurrentMonth = nowDate >= startDate && nowDate <= endDate
+  const remainingDays = isViewingCurrentMonth ? getRemainingDaysInMonth(now, monthEndDay) : 0
   const currentBalance = getCurrentBalance(totalIncome, totalExpense)
-  const avgDailyExpense = getAvgDailyExpense(totalExpense, Math.max(daysElapsed, 1))
-  const daysLeft = getDaysLeft(currentBalance, avgDailyExpense)
-  const projectedBalance = getProjectedEndOfMonthBalance(currentBalance, avgDailyExpense, remainingDays)
+
+  const txLike = allTransactions.map((t) => ({
+    type: t.type as 'income' | 'expense',
+    amount: Number(t.amount),
+    category: t.category ?? undefined,
+    date: t.date,
+  }))
+  const variableDailyRate = computeVariableDailyRate(txLike, now)
+  const plannedRemaining = computePlannedRemaining(
+    txLike,
+    now,
+    monthRange.start,
+    monthRange.end
+  )
+  const forecast = computeForecastEnd(
+    currentBalance,
+    variableDailyRate,
+    plannedRemaining,
+    remainingDays
+  )
+  const projectedBalance = forecast.forecastEnd
+  const daysLeft =
+    variableDailyRate > 0 ? currentBalance / variableDailyRate : (currentBalance >= 0 ? Infinity : 0)
   const financialStatus = getFinancialStatus(projectedBalance, daysLeft, remainingDays)
   const todayStr = format(now, 'yyyy-MM-dd')
   const todayExpense = isViewingCurrentMonth ? getTodayExpense(transactions, todayStr) : 0
-  const todayVsAvgPercent = getTodayVsAvgPercent(todayExpense, avgDailyExpense)
+  const todayVsAvgPercent = getTodayVsAvgPercent(todayExpense, variableDailyRate)
   const topCategories = getTopExpenseCategories(transactions, 3)
   const recentBigExpenses = getRecentBigExpenses(transactions, 5)
 
@@ -421,13 +454,16 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* 2) Projected End-of-Month Balance + 3) Today vs Average – grid */}
+        {/* 2) Projected End-of-Month Balance + 3) Today vs Variable – grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-          <ProjectedBalanceCard projectedBalance={projectedBalance} />
+          <ProjectedBalanceCard
+            projectedBalance={projectedBalance}
+            plannedRemaining={forecast.plannedRemaining}
+          />
           {isViewingCurrentMonth && (
             <TodayVsAverageCard
               todayExpense={todayExpense}
-              avgDailyExpense={avgDailyExpense}
+              variableDailyRate={variableDailyRate}
               percentDiff={todayVsAvgPercent}
             />
           )}

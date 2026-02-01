@@ -37,6 +37,8 @@ export type Profile = {
   liquid_assets: number
   total_assets: number
   total_liabilities: number
+  /** 0 = ตามปฏิทิน, 1-31 = ใช้วันนั้นเป็นวันสิ้นเดือน */
+  month_end_day?: number
 }
 
 export type Transaction = {

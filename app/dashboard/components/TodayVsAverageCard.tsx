@@ -2,13 +2,13 @@
 
 type Props = {
   todayExpense: number
-  avgDailyExpense: number
+  variableDailyRate: number
   percentDiff: number
 }
 
-export default function TodayVsAverageCard({ todayExpense, avgDailyExpense, percentDiff }: Props) {
+export default function TodayVsAverageCard({ todayExpense, variableDailyRate, percentDiff }: Props) {
   const isOverAvg = percentDiff > 0
-  const hasAvg = avgDailyExpense > 0
+  const hasAvg = variableDailyRate > 0
 
   return (
     <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-200">
@@ -21,11 +21,12 @@ export default function TodayVsAverageCard({ todayExpense, avgDailyExpense, perc
           </span>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-sm text-gray-600">ค่าเฉลี่ยต่อวัน</span>
+          <span className="text-sm text-gray-600">ค่าใช้จ่ายผันแปรเฉลี่ยต่อวัน (median 14 วันล่าสุด)</span>
           <span className="text-sm font-medium text-gray-800">
-            {avgDailyExpense.toLocaleString('th-TH')} บาท
+            {variableDailyRate.toLocaleString('th-TH')} บาท
           </span>
         </div>
+        <p className="text-xs text-gray-400">เฉพาะหมวดผันแปร (อาหาร, ค่าเดินทาง, สุขภาพ, บันเทิง, ฯลฯ)</p>
         {hasAvg && (
           <div className="flex justify-between items-center pt-2 border-t border-gray-100">
             <span className="text-sm text-gray-600">เทียบกับค่าเฉลี่ย</span>
@@ -36,7 +37,7 @@ export default function TodayVsAverageCard({ todayExpense, avgDailyExpense, perc
         )}
       </div>
       {!hasAvg && (
-        <p className="text-xs text-gray-500 mt-2">ยังไม่มีข้อมูลรายจ่ายในเดือนนี้สำหรับคำนวณค่าเฉลี่ย</p>
+        <p className="text-xs text-gray-500 mt-2">ยังไม่มีข้อมูลรายจ่ายผันแปร 14 วันล่าสุดสำหรับคำนวณ</p>
       )}
     </div>
   )
