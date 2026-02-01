@@ -28,6 +28,14 @@ export type VariableCategory = (typeof VARIABLE_EXPENSE_CATEGORIES)[number]
 const FIXED_SET = new Set<string>(FIXED_EXPENSE_CATEGORIES)
 const VARIABLE_SET = new Set<string>(VARIABLE_EXPENSE_CATEGORIES)
 
+/** Returns 'fixed' | 'variable' for expense categories; null for income/unknown. */
+export function getExpenseCategoryType(category: string): 'fixed' | 'variable' | null {
+  const cat = (category ?? '').trim()
+  if (FIXED_SET.has(cat)) return 'fixed'
+  if (VARIABLE_SET.has(cat)) return 'variable'
+  return null
+}
+
 export type TransactionLike = {
   type: 'income' | 'expense'
   amount: number

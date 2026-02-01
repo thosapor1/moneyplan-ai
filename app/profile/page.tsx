@@ -8,6 +8,8 @@ import FinancialAnalysis from '@/components/FinancialAnalysis'
 import BottomNavigation from '@/components/BottomNavigation'
 import { EXPENSE_CATEGORIES } from '@/lib/storage'
 import { getMonthRange } from '@/lib/finance'
+import { getExpenseCategoryType } from '@/lib/forecast'
+import TypePill from '@/components/TypePill'
 
 export default function ProfilePage() {
   const router = useRouter()
@@ -480,11 +482,13 @@ export default function ProfilePage() {
             <div className="space-y-3">
               {EXPENSE_CATEGORIES.map((cat) => {
                 const value = categoryBudgets[cat] ?? 0
+                const tagType = getExpenseCategoryType(cat)
                 return (
-                  <div key={cat} className="flex items-center gap-3">
-                    <label className="flex-1 text-sm text-gray-700 min-w-0 truncate" title={cat}>
-                      {cat}
+                  <div key={cat} className="flex items-center gap-2">
+                    <label className="flex-1 min-w-0 text-sm text-gray-700" title={cat}>
+                      <span className="block truncate">{cat}</span>
                     </label>
+                    {tagType !== null && <TypePill type={tagType} />}
                     <input
                       type="number"
                       min="0"

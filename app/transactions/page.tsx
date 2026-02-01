@@ -8,6 +8,8 @@ import CategoryIcon from '@/components/CategoryIcon'
 import { format } from 'date-fns'
 import { EXPENSE_CATEGORIES, getVisibleCategories, setVisibleCategories } from '@/lib/storage'
 import { getDaysInMonth, getMonthRange } from '@/lib/finance'
+import { getExpenseCategoryType } from '@/lib/forecast'
+import TypePill from '@/components/TypePill'
 
 export default function TransactionsPage() {
   const router = useRouter()
@@ -515,8 +517,13 @@ export default function TransactionsPage() {
                     <CategoryIcon category={transaction.category || ''} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      {transaction.category || '-'}
+                    <p className="text-sm font-medium text-gray-800 flex items-center gap-2 flex-wrap min-w-0">
+                      <span className="min-w-0 truncate">{transaction.category || '-'}</span>
+                      {transaction.type === 'expense' && (() => {
+                        const tagType = getExpenseCategoryType(transaction.category || '')
+                        if (tagType === 'fixed') return <TypePill type="fixed" />
+                        return null
+                      })()}
                     </p>
                     <p className="text-xs text-gray-500">
                       {format(new Date(transaction.date), 'yyyy-MM-dd')}
