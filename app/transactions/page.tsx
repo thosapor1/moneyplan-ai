@@ -1,14 +1,21 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, Transaction, fetchCategoryBudgets } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
 import CategoryIcon from '@/components/CategoryIcon'
 import { format } from 'date-fns'
 import { EXPENSE_CATEGORIES, getVisibleCategories, setVisibleCategories } from '@/lib/storage'
-import { getDaysInMonth, getMonthRange } from '@/lib/finance'
-import { getExpenseCategoryType } from '@/lib/forecast'
+import {
+  getMonthRange,
+  computeSpentByCategory,
+  computeRemainingBudgetByCategory,
+  computeDailyBudgetFromRemaining,
+  getDailyBudgetBreakdown,
+} from '@/lib/finance'
+import { getActivePeriodMonth, getRemainingDaysInPeriod } from '@/lib/period'
+import { getExpenseCategoryType, VARIABLE_EXPENSE_CATEGORIES } from '@/lib/forecast'
 import TypePill from '@/components/TypePill'
 
 export default function TransactionsPage() {
@@ -24,6 +31,8 @@ export default function TransactionsPage() {
   const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
   /** วันสิ้นเดือนที่กำหนดเอง (0 = ตามปฏิทิน, 1-31) */
   const [monthEndDay, setMonthEndDayState] = useState(0)
+  const [profileLoaded, setProfileLoaded] = useState(false)
+  const initialMonthSetRef = useRef(false)
   const [formData, setFormData] = useState({
     type: 'expense' as 'income' | 'expense',
     amount: '',
@@ -81,6 +90,7 @@ export default function TransactionsPage() {
         .eq('id', session.user.id)
         .single()
       setMonthEndDayState(profileData?.month_end_day ?? 0)
+      setProfileLoaded(true)
     } catch (error) {
       console.error('Error loading transactions:', error)
       alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + (error as any).message || 'ไม่สามารถโหลดข้อมูลได้')
@@ -92,6 +102,13 @@ export default function TransactionsPage() {
   useEffect(() => {
     loadTransactions()
   }, [loadTransactions])
+
+  useEffect(() => {
+    if (profileLoaded && !initialMonthSetRef.current) {
+      setSelectedMonth(getActivePeriodMonth(new Date(), monthEndDay))
+      initialMonthSetRef.current = true
+    }
+  }, [profileLoaded, monthEndDay])
 
   // โหลดหมวดที่แสดงจาก localStorage
   useEffect(() => {
@@ -128,13 +145,30 @@ export default function TransactionsPage() {
       ? expenseCategories
       : visibleCategories.filter((c) => c !== UNKNOWN_CATEGORY_LABEL)
 
-  const monthlyTotalForDaily = budgetCategories.reduce(
-    (sum, cat) => sum + (categoryBudgets[cat] ?? 0),
-    0
+  const monthRange = getMonthRange(selectedMonth, monthEndDay)
+  const rangeStartStr = format(monthRange.start, 'yyyy-MM-dd')
+  const rangeEndStr = format(monthRange.end, 'yyyy-MM-dd')
+  const remainingDays = getRemainingDaysInPeriod(new Date(), monthRange)
+  const transactionsAsLike = transactions.map((t) => ({
+    type: t.type as 'income' | 'expense',
+    amount: Number(t.amount),
+    category: t.category ?? undefined,
+    date: t.date,
+  }))
+  const spentByCategory = computeSpentByCategory(transactionsAsLike, monthRange)
+  const remainingByCategory = computeRemainingBudgetByCategory(categoryBudgets, spentByCategory)
+  const dailyBudget = computeDailyBudgetFromRemaining(
+    remainingByCategory,
+    remainingDays,
+    VARIABLE_EXPENSE_CATEGORIES
   )
-  const daysInCurrentMonth = getDaysInMonth(new Date(), monthEndDay)
-  const dailyBudgetFromMonthly =
-    daysInCurrentMonth > 0 ? monthlyTotalForDaily / daysInCurrentMonth : 0
+  const dailyBudgetBreakdown = getDailyBudgetBreakdown(
+    categoryBudgets,
+    spentByCategory,
+    VARIABLE_EXPENSE_CATEGORIES
+  )
+  const isTodayInRange = todayStr >= rangeStartStr && todayStr <= rangeEndStr
+  const hasAnyVariableBudget = VARIABLE_EXPENSE_CATEGORIES.some((cat) => (categoryBudgets[cat] ?? 0) > 0)
 
   const isInSelectedCategories = (cat: string) => {
     const c = (cat || '').trim()
@@ -144,15 +178,17 @@ export default function TransactionsPage() {
         : c
     return visibleCategories.length === 0 || visibleCategories.includes(effective)
   }
-  const expenseToday = transactions
-    .filter(
-      (t) =>
-        t.type === 'expense' &&
-        t.date === todayStr &&
-        isInSelectedCategories(t.category || '')
-    )
-    .reduce((sum, t) => sum + Number(t.amount), 0)
-  const remainingToday = dailyBudgetFromMonthly - expenseToday
+  const expenseToday = isTodayInRange
+    ? transactions
+        .filter(
+          (t) =>
+            t.type === 'expense' &&
+            t.date === todayStr &&
+            isInSelectedCategories(t.category || '')
+        )
+        .reduce((sum, t) => sum + Number(t.amount), 0)
+    : 0
+  const remainingToday = Math.max(0, dailyBudget - expenseToday)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -310,10 +346,7 @@ export default function TransactionsPage() {
   const currentMonthName = monthNames[selectedMonth.getMonth()]
   const currentYear = selectedMonth.getFullYear() + 543
 
-  // Filter transactions by ช่วงเดือนเดียวกันกับ Dashboard (ตามวันสิ้นเดือนที่กำหนด) และหมวดที่เลือก
-  const monthRange = getMonthRange(selectedMonth, monthEndDay)
-  const rangeStartStr = format(monthRange.start, 'yyyy-MM-dd')
-  const rangeEndStr = format(monthRange.end, 'yyyy-MM-dd')
+  // Filter transactions by ช่วงเดือนเดียวกันกับ Dashboard (rangeStartStr/rangeEndStr from monthRange above)
   const filteredTransactions = transactions.filter(t => {
     if (t.date < rangeStartStr || t.date > rangeEndStr) return false
     if (visibleCategories.length === 0) return true
@@ -441,23 +474,23 @@ export default function TransactionsPage() {
           </p>
         </div>
 
-        {/* งบรายจ่ายต่อวัน (คำนวณจากงบรายเดือนของหมวดที่เลือกด้านบน) */}
+        {/* งบรายจ่ายต่อวัน (จากงบที่เหลือในงวด เฉพาะหมวดผันแปร) */}
         <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm text-gray-600">งบรายจ่ายต่อวัน</span>
-              <span className="text-xs text-gray-500">จากงบรายเดือนของหมวดที่เลือก</span>
+              <span className="text-xs text-gray-500">งบต่อวันจากงบที่เหลือในงวด (เฉพาะหมวดผันแปร)</span>
             </div>
-            {monthlyTotalForDaily <= 0 ? (
+            {!hasAnyVariableBudget ? (
               <p className="text-sm text-amber-600 py-2">
-                กำหนดงบรายเดือนต่อหมวดในหน้าโปรไฟล์ แล้วเลือกหมวดด้านบน
+                กำหนดงบรายเดือนต่อหมวดผันแปรในหน้าโปรไฟล์
               </p>
             ) : (
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-gray-50 rounded-lg p-2">
                   <p className="text-xs text-gray-500">งบวันนี้</p>
                   <p className="text-sm font-semibold text-gray-800">
-                    {Math.round(dailyBudgetFromMonthly).toLocaleString('th-TH')}
+                    {Math.round(dailyBudget).toLocaleString('th-TH')}
                   </p>
                   <p className="text-xs text-gray-400">บาท</p>
                 </div>
@@ -468,7 +501,7 @@ export default function TransactionsPage() {
                 </div>
                 <div className="bg-green-50 rounded-lg p-2">
                   <p className="text-xs text-gray-500">คงเหลือ</p>
-                  <p className={`text-sm font-semibold ${remainingToday >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <p className="text-sm font-semibold text-green-600">
                     {Math.round(remainingToday).toLocaleString('th-TH')}
                   </p>
                   <p className="text-xs text-gray-400">บาท</p>

@@ -34,7 +34,9 @@ export function getEffectiveLastDayOfMonth(month: Date, customDay: number): numb
 }
 
 /**
- * จำนวนวันใน "เดือน" ตามวันสิ้นเดือนที่กำหนด (ใช้คำนวณงบรายวัน ฯลฯ)
+ * คืน "วันสิ้นเดือนตาม customDay" (เลข 1–31) ไม่ใช่จำนวนวันของงวด.
+ * สำหรับจำนวนวันของงวดให้ใช้ getPeriodDays(range) จาก lib/period.ts
+ * @deprecated Prefer getPeriodDays(getActiveMonthRange(asOf, monthEndDay)) for period length
  */
 export function getDaysInMonth(month: Date, customMonthEndDay: number): number {
   return getEffectiveLastDayOfMonth(month, customMonthEndDay)
@@ -63,7 +65,11 @@ export function getMonthRange(
   return { start, end }
 }
 
-/** Days left in the current month (including today). customMonthEndDay 0 = ตามปฏิทิน, 1-31 = ใช้วันนั้นเป็นวันสิ้นเดือน */
+/**
+ * Days left in the current calendar/custom month (including today).
+ * For "period" that may span across month boundary (e.g. 28–31 when endDay=27), use getRemainingDaysInPeriod(asOf, range) from lib/period.ts
+ * @deprecated Prefer getRemainingDaysInPeriod(now, getActiveMonthRange(now, monthEndDay)) for forecast/period logic
+ */
 export function getRemainingDaysInMonth(
   now: Date = new Date(),
   customMonthEndDay: number = 0
@@ -150,6 +156,90 @@ export function getTodayExpense(transactions: TransactionLike[], todayStr: strin
   return transactions
     .filter((t) => t.type === 'expense' && t.date === todayStr)
     .reduce((sum, t) => sum + Number(t.amount), 0)
+}
+
+export type DateRange = { start: Date; end: Date }
+
+/** Sum of expenses per category within range (date strings YYYY-MM-DD). */
+export function computeSpentByCategory(
+  transactions: TransactionLike[],
+  range: DateRange
+): Record<string, number> {
+  const startStr = formatDate(range.start)
+  const endStr = formatDate(range.end)
+  const out: Record<string, number> = {}
+  transactions
+    .filter(
+      (t) =>
+        t.type === 'expense' &&
+        t.date >= startStr &&
+        t.date <= endStr &&
+        (t.category ?? '').trim() !== ''
+    )
+    .forEach((t) => {
+      const cat = (t.category ?? '').trim()
+      out[cat] = (out[cat] ?? 0) + Number(t.amount)
+    })
+  return out
+}
+
+function formatDate(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** remainingBudget[cat] = max(0, monthlyBudget[cat] - spent[cat]). No negative remaining. */
+export function computeRemainingBudgetByCategory(
+  budgetMap: Record<string, number>,
+  spentMap: Record<string, number>
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  const allCats = new Set([...Object.keys(budgetMap), ...Object.keys(spentMap)])
+  allCats.forEach((cat) => {
+    const budget = budgetMap[cat] ?? 0
+    const spent = spentMap[cat] ?? 0
+    out[cat] = Math.max(0, budget - spent)
+  })
+  return out
+}
+
+/** Daily budget = sum(remaining for variable categories) / remainingDays. Returns 0 if remainingDays <= 0. */
+export function computeDailyBudgetFromRemaining(
+  remainingBudgetMap: Record<string, number>,
+  remainingDays: number,
+  variableCategories: readonly string[]
+): number {
+  if (remainingDays <= 0) return 0
+  const variableSet = new Set(variableCategories)
+  let total = 0
+  variableSet.forEach((cat) => {
+    total += remainingBudgetMap[cat] ?? 0
+  })
+  return total / remainingDays
+}
+
+export type DailyBudgetBreakdownItem = {
+  category: string
+  monthlyBudget: number
+  spentToDate: number
+  remainingBudget: number
+}
+
+/** Breakdown for variable categories: monthlyBudget, spentToDate, remainingBudget (for UI). */
+export function getDailyBudgetBreakdown(
+  budgetMap: Record<string, number>,
+  spentMap: Record<string, number>,
+  variableCategories: readonly string[]
+): DailyBudgetBreakdownItem[] {
+  const remaining = computeRemainingBudgetByCategory(budgetMap, spentMap)
+  return variableCategories.map((cat) => ({
+    category: cat,
+    monthlyBudget: budgetMap[cat] ?? 0,
+    spentToDate: spentMap[cat] ?? 0,
+    remainingBudget: remaining[cat] ?? 0,
+  }))
 }
 
 /** Number of days in range that have at least one transaction (for avg daily calc). If 0, use daysInMonth. */

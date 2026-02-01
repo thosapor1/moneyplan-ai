@@ -1,14 +1,12 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase, Profile, Transaction } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
 import {
   getCurrentBalance,
-  getRemainingDaysInMonth,
-  getDaysElapsedInMonth,
   getFinancialStatus,
   getTodayExpense,
   getTodayVsAvgPercent,
@@ -16,6 +14,10 @@ import {
   getRecentBigExpenses,
   getMonthRange,
 } from '@/lib/finance'
+import {
+  getActivePeriodMonth,
+  getRemainingDaysInPeriod,
+} from '@/lib/period'
 import {
   computeVariableDailyRate,
   computePlannedRemaining,
@@ -41,6 +43,7 @@ export default function DashboardPage() {
   const [chartPeriod, setChartPeriod] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('daily')
   const [hoveredPoint, setHoveredPoint] = useState<{ label: string; income: number; expense: number; x: number; y: number } | null>(null)
   const [hoveredCumulativePoint, setHoveredCumulativePoint] = useState<{ label: string; sum: number; x: number; y: number } | null>(null)
+  const initialMonthSetRef = useRef(false)
 
   const checkUser = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -135,6 +138,15 @@ export default function DashboardPage() {
   }, [user])
 
   const monthEndDay = profile?.month_end_day ?? 0
+
+  useEffect(() => {
+    if (!initialMonthSetRef.current && profile != null) {
+      const now = new Date()
+      const activeMonth = getActivePeriodMonth(now, profile.month_end_day ?? 0)
+      setSelectedMonth(activeMonth)
+      initialMonthSetRef.current = true
+    }
+  }, [profile])
 
   useEffect(() => {
     if (user) {
@@ -373,7 +385,7 @@ export default function DashboardPage() {
   const startDate = new Date(monthRange.start.getFullYear(), monthRange.start.getMonth(), monthRange.start.getDate()).getTime()
   const endDate = new Date(monthRange.end.getFullYear(), monthRange.end.getMonth(), monthRange.end.getDate()).getTime()
   const isViewingCurrentMonth = nowDate >= startDate && nowDate <= endDate
-  const remainingDays = isViewingCurrentMonth ? getRemainingDaysInMonth(now, monthEndDay) : 0
+  const remainingDays = getRemainingDaysInPeriod(now, monthRange)
   const currentBalance = getCurrentBalance(totalIncome, totalExpense)
 
   const txLike = allTransactions.map((t) => ({

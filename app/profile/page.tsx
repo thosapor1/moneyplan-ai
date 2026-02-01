@@ -7,7 +7,7 @@ import { format } from 'date-fns'
 import FinancialAnalysis from '@/components/FinancialAnalysis'
 import BottomNavigation from '@/components/BottomNavigation'
 import { EXPENSE_CATEGORIES } from '@/lib/storage'
-import { getMonthRange } from '@/lib/finance'
+import { getActiveMonthRange } from '@/lib/period'
 import { getExpenseCategoryType } from '@/lib/forecast'
 import TypePill from '@/components/TypePill'
 
@@ -78,10 +78,10 @@ export default function ProfilePage() {
         initialProfileRef.current = newProfile
       }
 
-      // โหลดรายได้จาก transactions ตามช่วงเดือนที่กำหนด (วันสิ้นเดือนที่ตั้งไว้ เช่น 27 ม.ค.–27 ก.พ.)
+      // โหลดรายได้จาก transactions ตามช่วงงวดที่ครอบคลุมวันนี้ (ถ้าวันนี้ 28–31 กับ endDay 27 → งวดจบ 27 เดือนถัดไป)
       const now = new Date()
       const monthEndDay = data?.month_end_day ?? 0
-      const { start, end } = getMonthRange(now, monthEndDay)
+      const { start, end } = getActiveMonthRange(now, monthEndDay)
 
       const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions')
