@@ -93,10 +93,10 @@ const ICON_ELEMENTS: Record<IconKey, React.ReactNode> = {
     'M7 2v7M5 2v4M9 2v4M7 9v13M17 2c-2 0-3 2-3 4v4h6V6c0-2-1-4-3-4zm0 8v12'
   ),
   // Transit: bus/train arrows
-  transit: svg('M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'),
+  transit: svg('M7 18c-1.7 0-3-1.3-3-3V7c0-2.8 2.2-5 5-5h6c2.8 0 5 2.2 5 5v8c0 1.7-1.3 3-3 3M7 18h10M8 18l-2 2M16 18l2 2M7 8h10M8 14h.01M16 14h.01'),
   // Home
   home: svg(
-    'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'
+    'M3 10.5L12 3l9 7.5M6 10v10h12V10M10 20v-6h4v6'
   ),
   // Utilities: bolt/lightbulb
   utilities: svg(
@@ -117,7 +117,7 @@ const ICON_ELEMENTS: Record<IconKey, React.ReactNode> = {
   // Shopping: bag/cart
   shopping: svg('M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z'),
   // Phone/wifi
-  phone: svg('M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z'),
+  phone: svg('M15 3h-6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2M11 18h2M18 8c1.7 1.7 1.7 4.3 0 6M20 6c2.9 2.9 2.9 7.1 0 10'),
   // Debt: receipt/credit
   debt: svg(
     'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
