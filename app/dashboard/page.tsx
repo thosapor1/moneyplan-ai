@@ -23,12 +23,9 @@ import {
   computePlannedRemaining,
   computeForecastEnd,
 } from '@/lib/forecast'
-import FinancialStatusCard from './components/FinancialStatusCard'
-import ProjectedBalanceCard from './components/ProjectedBalanceCard'
-import TodayVsAverageCard from './components/TodayVsAverageCard'
-import TopSpendingCategories from './components/TopSpendingCategories'
 import RecentBigExpenses from './components/RecentBigExpenses'
-import { format, startOfMonth, endOfMonth, subMonths, eachMonthOfInterval, startOfDay, endOfDay, eachDayOfInterval, subDays, startOfWeek, endOfWeek, eachWeekOfInterval, subWeeks, startOfYear, endOfYear, eachYearOfInterval, subYears } from 'date-fns'
+import { getCategoryIcon } from '@/lib/category-icons'
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, eachMonthOfInterval, startOfDay, endOfDay, eachDayOfInterval, subDays, startOfWeek, endOfWeek, eachWeekOfInterval, subWeeks, startOfYear, endOfYear, eachYearOfInterval, subYears } from 'date-fns'
 
 export default function DashboardPage() {
   const router = useRouter()
@@ -337,33 +334,6 @@ export default function DashboardPage() {
   const NET_BASELINE_Y = PLOT_Y_TOP + PLOT_HEIGHT / 2
   const NET_HALF_RANGE = PLOT_HEIGHT / 2
 
-  // Category icons
-  const getCategoryIcon = (category: string, type: 'income' | 'expense') => {
-    const iconMap: { [key: string]: JSX.Element } = {
-      'เงินเดือน': (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-        </svg>
-      ),
-      'ที่พัก/ค่าเช่า': (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-        </svg>
-      ),
-      'ช้อปปิ้ง': (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-        </svg>
-      ),
-    }
-
-    return iconMap[category] || (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    )
-  }
-
   const monthNames = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม']
   const currentMonthName = monthNames[selectedMonth.getMonth()]
   const currentYear = selectedMonth.getFullYear() + 543 // Convert to Buddhist year
@@ -417,23 +387,80 @@ export default function DashboardPage() {
   const topCategories = getTopExpenseCategories(transactions, 3)
   const recentBigExpenses = getRecentBigExpenses(transactions, 5)
 
+  const spendingPercentOfIncome = totalIncome > 0 ? (totalExpense / totalIncome) * 100 : 0
+  const spendingBarOver80 = spendingPercentOfIncome > 80
+
+  function getRecommendation(): string {
+    if (financialStatus === 'Risk') {
+      return 'คาดการณ์ปลายเดือนอาจติดลบ ลองลดรายจ่ายหรือหารายได้เสริม'
+    }
+    if (financialStatus === 'Warning') {
+      return 'ยอดคงเหลืออาจไม่พอถึงปลายเดือน ลดรายจ่ายผันแปรวันละนิดก็ช่วยได้'
+    }
+    const top = topCategories[0]
+    if (top && totalIncome > 0) {
+      const topPercentOfIncome = (top.total / totalIncome) * 100
+      if (top.category === 'ที่พัก/ค่าเช่า' && topPercentOfIncome > 40) {
+        return 'ค่าเช่ากินงบเกินครึ่ง ลองตั้งเป้าไม่เกิน 40% ของรายได้'
+      }
+      if (top.category === 'อาหาร' && top.percent > 35) {
+        return 'ค่าใช้จ่ายอาหารสูงกว่าปกติ ลองลดลงวันละ 50 บาท'
+      }
+    }
+    if (financialStatus === 'Healthy') {
+      return 'สถานะดีนะ ใช้จ่ายตามแผนต่อได้'
+    }
+    return ''
+  }
+  const recommendation = getRecommendation()
+
+  /** One-line coach tip for hero (e.g. "ถ้าลดค่าอาหารวันละ 50 บาท จะรอดเดือนนี้") */
+  function getShortTip(): string {
+    if (financialStatus === 'Risk') return 'ลองลดรายจ่ายหรือหารายได้เสริมจะช่วยได้'
+    if (financialStatus === 'Warning') return 'ลดรายจ่ายผันแปรวันละนิดก็ช่วยได้'
+    const top = topCategories[0]
+    if (top && totalIncome > 0) {
+      if (top.category === 'อาหาร' && top.total > 0) return 'ถ้าลดค่าอาหารวันละ 50 บาท จะรอดเดือนนี้'
+      if (top.category === 'ที่พัก/ค่าเช่า') return 'ลองตั้งเป้าค่าเช่าไม่เกิน 40% ของรายได้'
+    }
+    if (financialStatus === 'Healthy') return 'ใช้จ่ายตามแผนต่อได้'
+    return 'ติดตามรายจ่ายทุกวันช่วยคุมงบได้ดี'
+  }
+
+  const shortTip = getShortTip()
+
+  // Debt & savings summary (same simple logic as debt-goal / savings-goal pages)
+  const totalDebt = profile?.total_liabilities ?? 0
+  const monthlyDebtPayment = profile?.monthly_debt_payment ?? 0
+  const monthsToPayoff = monthlyDebtPayment > 0 && totalDebt > 0 ? Math.ceil(totalDebt / monthlyDebtPayment) : 0
+  const payoffDate = monthlyDebtPayment > 0 && totalDebt > 0 ? addMonths(now, monthsToPayoff) : null
+  const initialDebtMock = totalDebt > 0 ? totalDebt * 1.2 : 0
+  const debtPaidPercent = initialDebtMock > 0 ? Math.min(99, Math.round(((initialDebtMock - totalDebt) / initialDebtMock) * 100)) : 0
+
+  const currentSaved = profile?.liquid_assets ?? 0
+  const monthlySaving = profile?.saving ?? 0
+  const targetSavings = currentSaved > 0 ? Math.max(currentSaved * 2, 100000) : 200000
+  const savingsProgressPercent = targetSavings > 0 ? Math.min(100, Math.round((currentSaved / targetSavings) * 100)) : 0
+  const monthsToGoal = monthlySaving > 0 && currentSaved < targetSavings ? Math.ceil((targetSavings - currentSaved) / monthlySaving) : 0
+  const savingsGoalDate = monthlySaving > 0 && currentSaved < targetSavings ? addMonths(now, monthsToGoal) : null
+
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
       {/* Header */}
-      <div className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center">
-        <h1 className="text-lg font-semibold">ภาพรวม</h1>
+      <div className="bg-white text-gray-800 px-4 py-3 flex justify-between items-center shadow-sm">
+        <h1 className="text-lg font-semibold text-gray-800">ภาพรวม</h1>
         <div className="flex items-center gap-3">
           <button
             onClick={handleLogout}
-            className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+            className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
             title="ออกจากระบบ"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
           </button>
-          <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
@@ -442,48 +469,188 @@ export default function DashboardPage() {
 
       <div className="max-w-md mx-auto px-4 py-4">
         {/* Month Selector */}
-        <div className="bg-gray-800 text-white px-4 py-3 rounded-lg mb-4 flex items-center justify-between">
-          <button onClick={() => changeMonth('prev')} className="p-1">
+        <div className="bg-white text-gray-800 px-4 py-3 rounded-2xl shadow-sm mb-5 flex items-center justify-between">
+          <button onClick={() => changeMonth('prev')} className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className="font-medium">{currentMonthName} {currentYear}</span>
-          <button onClick={() => changeMonth('next')} className="p-1">
+          <span className="font-medium text-gray-800">{currentMonthName} {currentYear}</span>
+          <button onClick={() => changeMonth('next')} className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>
         </div>
 
-        {/* 1) Financial Status Card (Hero) */}
-        <div className="mb-4">
-          <FinancialStatusCard
-            status={financialStatus}
-            currentBalance={currentBalance}
-            daysLeft={daysLeft === Infinity ? 999 : daysLeft}
-            remainingDays={remainingDays}
-          />
+        {/* Section 1: Monthly Status (Hero) */}
+        <div className="mb-5">
+          {(() => {
+            const isHealthy = financialStatus === 'Healthy'
+            const isWarning = financialStatus === 'Warning'
+            const isRisk = financialStatus === 'Risk'
+            const heroLabel = isHealthy ? 'เดือนนี้ปลอดภัย' : isWarning ? 'ต้องระวังการใช้เงิน' : 'มีโอกาสติดลบ'
+            const heroBg = isHealthy ? 'bg-emerald-50' : isWarning ? 'bg-amber-50' : 'bg-red-50'
+            const heroDot = isHealthy ? '🟢' : isWarning ? '🟡' : '🔴'
+            const heroText = isHealthy ? 'text-emerald-800' : isWarning ? 'text-amber-800' : 'text-red-800'
+            return (
+              <div className={`rounded-2xl p-6 ${heroBg} shadow-sm`}>
+                <p className={`text-xl font-bold ${heroText} flex items-center gap-2`}>
+                  <span>{heroDot}</span>
+                  {heroLabel}
+                </p>
+                {shortTip && (
+                  <p className="text-sm text-gray-600 mt-2 leading-relaxed">{shortTip}</p>
+                )}
+              </div>
+            )
+          })()}
         </div>
 
-        {/* 2) Projected End-of-Month Balance + 3) Today vs Variable – grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-          <ProjectedBalanceCard
-            projectedBalance={projectedBalance}
-            plannedRemaining={forecast.plannedRemaining}
-          />
-          {isViewingCurrentMonth && (
-            <TodayVsAverageCard
-              todayExpense={todayExpense}
-              variableDailyRate={variableDailyRate}
-              percentDiff={todayVsAvgPercent}
-            />
-          )}
+        {/* Section 2: Three Main Cards */}
+        <div className="space-y-4 mb-5">
+          {/* Card 1 — Spending Control */}
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">💸</span>
+              <h2 className="text-sm font-medium text-gray-600">ควบคุมรายจ่าย</h2>
+            </div>
+            {totalIncome > 0 ? (
+              <>
+                <p className="text-2xl font-bold text-gray-900">
+                  {spendingPercentOfIncome.toFixed(0)}% <span className="text-base font-medium text-gray-500">ของรายได้</span>
+                </p>
+                <p className="text-xs text-gray-500 mb-2">ใช้จ่ายไปแล้วในเดือนนี้</p>
+                <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden mb-3">
+                  <div
+                    className={`h-full rounded-full transition-all ${spendingBarOver80 ? 'bg-red-400' : 'bg-amber-300'}`}
+                    style={{ width: `${Math.min(spendingPercentOfIncome, 100)}%` }}
+                  />
+                </div>
+                {topCategories[0] && (
+                  <p className="text-sm text-gray-600 mb-3">
+                    หมวดที่ใช้มาก: <span className="font-medium text-gray-800">{topCategories[0].category}</span>
+                  </p>
+                )}
+                <Link
+                  href="#"
+                  className="block w-full py-2.5 px-3 rounded-xl text-sm font-medium text-center bg-amber-50 text-amber-800 border border-amber-200/60 hover:bg-amber-100/80 transition-colors"
+                >
+                  ดูวิธีลดรายจ่าย
+                </Link>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 mb-3">ยังไม่มีข้อมูลรายได้ในเดือนนี้</p>
+            )}
+          </div>
+
+          {/* Card 2 — Debt Goal */}
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">💳</span>
+              <h2 className="text-sm font-medium text-gray-600">เป้าปลดหนี้</h2>
+            </div>
+            {totalDebt > 0 ? (
+              <>
+                <p className="text-2xl font-bold text-gray-900">
+                  {totalDebt.toLocaleString('th-TH')} <span className="text-base font-medium text-gray-500">บาท</span>
+                </p>
+                <p className="text-xs text-gray-500 mb-1">ยอดหนี้คงเหลือ</p>
+                {debtPaidPercent > 0 && (
+                  <p className="text-sm text-emerald-600 font-medium mb-2">ปลดแล้วประมาณ {debtPaidPercent}%</p>
+                )}
+                {payoffDate && (
+                  <p className="text-sm text-gray-600 mb-3">คาดหมดหนี้ {format(payoffDate, 'MMM yyyy')}</p>
+                )}
+                <Link
+                  href="/debt-goal"
+                  className="block w-full py-2.5 px-3 rounded-xl text-sm font-medium text-center bg-emerald-50 text-emerald-800 border border-emerald-200/60 hover:bg-emerald-100/80 transition-colors"
+                >
+                  ดูแผนปลดหนี้
+                </Link>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-500 mb-3">ยังไม่มีหนี้ที่บันทึก</p>
+                <Link
+                  href="/debt-goal"
+                  className="block w-full py-2.5 px-3 rounded-xl text-sm font-medium text-center bg-emerald-50 text-emerald-800 border border-emerald-200/60 hover:bg-emerald-100/80 transition-colors"
+                >
+                  ดูแผนปลดหนี้
+                </Link>
+              </>
+            )}
+          </div>
+
+          {/* Card 3 — Savings Goal */}
+          <div className="bg-white rounded-2xl shadow-sm p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">💰</span>
+              <h2 className="text-sm font-medium text-gray-600">เป้าออมเงิน</h2>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              {currentSaved.toLocaleString('th-TH')} <span className="text-base font-medium text-gray-500">/ {targetSavings.toLocaleString('th-TH')} บาท</span>
+            </p>
+            <p className="text-xs text-gray-500 mb-2">เก็บได้แล้ว / เป้าหมาย</p>
+            <p className="text-sm text-sky-600 font-medium mb-2">ความคืบหน้า {savingsProgressPercent}%</p>
+            {savingsGoalDate && currentSaved < targetSavings && (
+              <p className="text-sm text-gray-600 mb-3">คาดถึงเป้า {format(savingsGoalDate, 'MMM yyyy')}</p>
+            )}
+            <Link
+              href="/savings-goal"
+              className="block w-full py-2.5 px-3 rounded-xl text-sm font-medium text-center bg-sky-50 text-sky-800 border border-sky-200/60 hover:bg-sky-100/80 transition-colors"
+            >
+              ดูแผนออมเงิน
+            </Link>
+          </div>
         </div>
 
-        {/* 4) Top Spending Categories */}
-        <div className="mb-4">
-          <TopSpendingCategories categories={topCategories} totalExpense={totalExpense} />
+        {/* Section 3: Today Performance */}
+        {isViewingCurrentMonth && (
+          <div className="bg-white rounded-2xl shadow-sm p-4 mb-5">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">📈</span>
+              <h2 className="text-sm font-medium text-gray-600">วันนี้</h2>
+            </div>
+            {variableDailyRate > 0 ? (
+              todayExpense <= variableDailyRate ? (
+                <p className="text-lg font-semibold text-emerald-600">วันนี้คุมเงินได้ดี</p>
+              ) : (
+                <p className="text-lg font-semibold text-amber-600">
+                  วันนี้ใช้เกินปกติ {Math.round(todayExpense - variableDailyRate).toLocaleString('th-TH')} บาท
+                </p>
+              )
+            ) : (
+              <p className="text-sm text-gray-500">ยังไม่มีข้อมูลพอเทียบ</p>
+            )}
+            <p className="text-xs text-gray-500 mt-1">เทียบกับค่าใช้จ่ายผันแปรเฉลี่ยต่อวัน</p>
+          </div>
+        )}
+
+        {/* Section 4: Smart Tips */}
+        <div className="bg-white rounded-2xl shadow-sm p-4 mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xl">💡</span>
+            <h2 className="text-sm font-medium text-gray-600">คำแนะนำ</h2>
+          </div>
+          {(() => {
+            const tips: string[] = []
+            if (recommendation) tips.push(recommendation)
+            if (totalIncome > 0 && totalExpense / totalIncome > 0.8 && !recommendation?.includes('ลดรายจ่าย')) {
+              tips.push('รายจ่ายเกิน 80% ของรายได้ ลองลดหมวดที่ไม่จำเป็นก่อน')
+            }
+            if (monthlySaving > 0 && totalIncome > 0 && (monthlySaving / totalIncome) * 100 < 10 && tips.length < 2) {
+              tips.push('เก็บออมอย่างน้อย 10% ของรายได้จะช่วยสร้างนิสัยการออมได้ดี')
+            }
+            if (tips.length === 0) tips.push('ทำได้ดีนะ ใช้จ่ายตามแผนต่อได้')
+            return (
+              <ul className="space-y-2">
+                {tips.slice(0, 2).map((t, i) => (
+                  <li key={i} className="text-sm text-gray-700 leading-relaxed">• {t}</li>
+                ))}
+              </ul>
+            )
+          })()}
         </div>
 
         {/* 5) Income vs Expense Trend (Behavior Chart) */}
@@ -498,9 +665,9 @@ export default function DashboardPage() {
           const BASELINE_COLOR = '#9ca3af'
 
           return (
-            <div className="bg-white p-4 rounded-lg shadow-sm mb-4">
+            <div className="bg-white p-4 rounded-2xl shadow-sm mb-5">
               <div className="flex justify-between items-center mb-3">
-                <h3 className="text-sm font-semibold text-gray-800">แนวโน้มรายรับรายจ่าย</h3>
+                <h3 className="text-sm font-medium text-gray-600">แนวโน้มรายรับรายจ่าย</h3>
                 <select
                   value={chartPeriod}
                   onChange={(e) => setChartPeriod(e.target.value as 'daily' | 'weekly' | 'monthly' | 'yearly')}
@@ -743,14 +910,14 @@ export default function DashboardPage() {
         })()}
 
         {/* 6) Recent Big Expenses */}
-        <div className="mb-4">
+        <div className="mb-5">
           <RecentBigExpenses items={recentBigExpenses} />
         </div>
 
         {/* Latest Transactions */}
-        <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200">
-            <h3 className="text-sm font-semibold text-gray-800">รายการล่าสุด</h3>
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h3 className="text-sm font-medium text-gray-600">รายการล่าสุด</h3>
           </div>
           {transactions.length === 0 ? (
             <div className="p-8 text-center text-gray-500 text-sm">

@@ -33,6 +33,8 @@ export default function TransactionsPage() {
   const [monthEndDay, setMonthEndDayState] = useState(0)
   const [profileLoaded, setProfileLoaded] = useState(false)
   const initialMonthSetRef = useRef(false)
+  const PAGE_SIZE = 30
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
   const [formData, setFormData] = useState({
     type: 'expense' as 'income' | 'expense',
     amount: '',
@@ -53,37 +55,15 @@ export default function TransactionsPage() {
 
   const expenseCategories = [...EXPENSE_CATEGORIES]
 
-  const loadTransactions = useCallback(async () => {
+  const loadProfileAndBudgets = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
       router.push('/auth/login')
       return
     }
-
     try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('date', { ascending: false })
-        .order('created_at', { ascending: false })
-
-      if (error) {
-        throw error
-      }
-
-      // Sort by date
-      const sortedTransactions = (data || []).sort((a, b) => {
-        const dateA = new Date(a.date).getTime()
-        const dateB = new Date(b.date).getTime()
-        return dateB - dateA
-      })
-
-      setTransactions(sortedTransactions as Transaction[])
-
       const budgets = await fetchCategoryBudgets(session.user.id)
       setCategoryBudgetsState(budgets)
-
       const { data: profileData } = await supabase
         .from('profiles')
         .select('month_end_day')
@@ -92,16 +72,54 @@ export default function TransactionsPage() {
       setMonthEndDayState(profileData?.month_end_day ?? 0)
       setProfileLoaded(true)
     } catch (error) {
-      console.error('Error loading transactions:', error)
-      alert('เกิดข้อผิดพลาดในการโหลดข้อมูล: ' + (error as any).message || 'ไม่สามารถโหลดข้อมูลได้')
-    } finally {
+      console.error('Error loading profile:', error)
+      setProfileLoaded(true)
       setLoading(false)
     }
   }, [router])
 
+  const loadMonthTransactions = useCallback(
+    async (month: Date, monthEndDayVal: number) => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      const range = getMonthRange(month, monthEndDayVal)
+      const startStr = format(range.start, 'yyyy-MM-dd')
+      const endStr = format(range.end, 'yyyy-MM-dd')
+      try {
+        const { data, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .gte('date', startStr)
+          .lte('date', endStr)
+          .order('date', { ascending: false })
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+        const sorted = (data || []).sort((a, b) => {
+          const dateA = new Date(a.date).getTime()
+          const dateB = new Date(b.date).getTime()
+          return dateB - dateA
+        })
+        setTransactions(sorted as Transaction[])
+      } catch (error) {
+        console.error('Error loading month transactions:', error)
+        setTransactions([])
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
+
   useEffect(() => {
-    loadTransactions()
-  }, [loadTransactions])
+    loadProfileAndBudgets()
+  }, [loadProfileAndBudgets])
+
+  useEffect(() => {
+    if (!profileLoaded) return
+    loadMonthTransactions(selectedMonth, monthEndDay)
+  }, [profileLoaded, selectedMonth, monthEndDay, loadMonthTransactions])
 
   useEffect(() => {
     if (profileLoaded && !initialMonthSetRef.current) {
@@ -117,6 +135,10 @@ export default function TransactionsPage() {
   }, [])
 
   // โหลดงบรายเดือนและวันสิ้นเดือนใหม่เมื่อกลับมาที่แท็บ (เช่น หลังแก้ในโปรไฟล์)
+  const loadMonthTransactionsRef = useRef(loadMonthTransactions)
+  loadMonthTransactionsRef.current = loadMonthTransactions
+  const selectedMonthRef = useRef(selectedMonth)
+  selectedMonthRef.current = selectedMonth
   useEffect(() => {
     if (typeof window === 'undefined') return
     const onFocus = async () => {
@@ -129,7 +151,9 @@ export default function TransactionsPage() {
           .select('month_end_day')
           .eq('id', session.user.id)
           .single()
-        setMonthEndDayState(profileData?.month_end_day ?? 0)
+        const newMonthEndDay = profileData?.month_end_day ?? 0
+        setMonthEndDayState(newMonthEndDay)
+        loadMonthTransactionsRef.current(selectedMonthRef.current, newMonthEndDay)
       }
     }
     window.addEventListener('focus', onFocus)
@@ -273,8 +297,8 @@ export default function TransactionsPage() {
         date: format(new Date(), 'yyyy-MM-dd'),
       })
       
-      // Reload transactions
-      await loadTransactions()
+      // Reload current month transactions
+      await loadMonthTransactions(selectedMonth, monthEndDay)
     } catch (error: any) {
       console.error('Error saving transaction:', error)
       alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถบันทึกข้อมูลได้'))
@@ -311,8 +335,7 @@ export default function TransactionsPage() {
         console.error('Delete error:', error)
         throw error
       }
-      
-      await loadTransactions()
+      await loadMonthTransactions(selectedMonth, monthEndDay)
     } catch (error: any) {
       console.error('Error deleting transaction:', error)
       alert('เกิดข้อผิดพลาด: ' + (error.message || 'ไม่สามารถลบข้อมูลได้'))
@@ -339,6 +362,7 @@ export default function TransactionsPage() {
       newMonth.setMonth(newMonth.getMonth() + 1)
     }
     setSelectedMonth(newMonth)
+    setDisplayCount(PAGE_SIZE)
   }
 
 
@@ -346,9 +370,8 @@ export default function TransactionsPage() {
   const currentMonthName = monthNames[selectedMonth.getMonth()]
   const currentYear = selectedMonth.getFullYear() + 543
 
-  // Filter transactions by ช่วงเดือนเดียวกันกับ Dashboard (rangeStartStr/rangeEndStr from monthRange above)
+  // Filter by visible categories (transactions are already for current month from server)
   const filteredTransactions = transactions.filter(t => {
-    if (t.date < rangeStartStr || t.date > rangeEndStr) return false
     if (visibleCategories.length === 0) return true
     const cat = (t.category || '').trim()
     const effectiveCat =
@@ -357,6 +380,24 @@ export default function TransactionsPage() {
         : cat
     return visibleCategories.includes(effectiveCat)
   })
+  const displayedTransactions = filteredTransactions.slice(0, displayCount)
+  const hasMore = filteredTransactions.length > displayCount
+
+  // Top category spent today (for summary)
+  const todayExpensesByCategory = isTodayInRange
+    ? transactions
+        .filter((t) => t.type === 'expense' && t.date === todayStr && isInSelectedCategories(t.category || ''))
+        .reduce<Record<string, number>>((acc, t) => {
+          const cat = t.category || UNKNOWN_CATEGORY_LABEL
+          acc[cat] = (acc[cat] || 0) + Number(t.amount)
+          return acc
+        }, {})
+    : {}
+  const topCategoryToday =
+    Object.keys(todayExpensesByCategory).length > 0
+      ? Object.entries(todayExpensesByCategory).sort((a, b) => b[1] - a[1])[0]
+      : null
+  const dailyAverageForCompare = dailyBudget
 
   const toggleVisibleCategory = (category: string) => {
     setVisibleCategoriesState((prev) => {
@@ -377,7 +418,7 @@ export default function TransactionsPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 pb-16">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-sky-500 border-t-transparent mx-auto"></div>
           <p className="mt-4 text-gray-600">กำลังโหลดข้อมูล...</p>
         </div>
       </div>
@@ -386,9 +427,9 @@ export default function TransactionsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
-      {/* Header */}
-      <div className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center">
-        <h1 className="text-lg font-semibold">รายรับรายจ่าย</h1>
+      {/* Header - match Dashboard */}
+      <div className="bg-white shadow-sm px-4 py-3 flex justify-between items-center">
+        <h1 className="text-lg font-semibold text-gray-800">รายรับรายจ่าย</h1>
         <div className="flex items-center gap-3">
           <button
             onClick={async () => {
@@ -396,15 +437,15 @@ export default function TransactionsPage() {
               router.push('/auth/login')
               router.refresh()
             }}
-            className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+            className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
             title="ออกจากระบบ"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
           </button>
-          <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
@@ -412,31 +453,61 @@ export default function TransactionsPage() {
       </div>
 
       <div className="max-w-md mx-auto px-4 py-4">
-        {/* Month Selector */}
-        <div className="bg-gray-800 text-white px-4 py-3 rounded-lg mb-4 flex items-center justify-between">
-          <button onClick={() => changeMonth('prev')} className="p-1">
+        {/* Month Selector - card style */}
+        <div className="bg-white text-gray-800 px-4 py-3 rounded-2xl shadow-sm mb-5 flex items-center justify-between">
+          <button onClick={() => changeMonth('prev')} className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <span className="font-medium">{currentMonthName} {currentYear}</span>
-          <button onClick={() => changeMonth('next')} className="p-1">
+          <span className="font-medium text-gray-800">{currentMonthName} {currentYear}</span>
+          <button onClick={() => changeMonth('next')} className="p-1.5 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
           </button>
         </div>
 
-        {/* ตัวกรองหมวด: เลือกว่าจะแสดงและนำมาคิดงบวันนี้ */}
-        <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
-          <p className="text-sm font-medium text-gray-700 mb-2">แสดงหมวด (ใช้คำนวณงบวันนี้ด้วย)</p>
+        {/* Summary: today's spending vs daily average + top category today */}
+        {isTodayInRange && (
+          <div className="bg-white rounded-2xl shadow-sm p-5 mb-5">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">📈</span>
+              <h2 className="text-sm font-medium text-gray-600">วันนี้</h2>
+            </div>
+            <p className="text-2xl font-bold text-gray-900">
+              {expenseToday.toLocaleString('th-TH')} <span className="text-base font-medium text-gray-500">บาท</span>
+            </p>
+            <p className="text-xs text-gray-500 mb-2">ใช้ไปวันนี้</p>
+            {dailyAverageForCompare > 0 ? (
+              expenseToday <= dailyAverageForCompare ? (
+                <p className="text-base font-semibold text-emerald-600">วันนี้ใช้น้อยกว่าปกติ</p>
+              ) : (
+                <p className="text-base font-semibold text-amber-600">
+                  วันนี้ใช้มากกว่าปกติ {Math.round(expenseToday - dailyAverageForCompare).toLocaleString('th-TH')} บาท
+                </p>
+              )
+            ) : (
+              <p className="text-sm text-gray-500">เทียบกับงบต่อวัน (ตั้งงบในหน้าโปรไฟล์)</p>
+            )}
+            {topCategoryToday && (
+              <p className="text-sm text-gray-600 mt-2">
+                หมวดที่ใช้มากวันนี้: <span className="font-medium text-gray-800">{topCategoryToday[0]}</span>
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* ตัวกรองหมวด */}
+        <div className="mb-5 bg-white rounded-2xl shadow-sm p-4">
+          <p className="text-sm font-medium text-gray-600 mb-2">แสดงหมวด (ใช้คำนวณงบวันนี้ด้วย)</p>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={showAllCategories}
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 visibleCategories.length === 0
-                  ? 'bg-gray-800 text-white'
+                  ? 'bg-sky-100 text-sky-800'
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
@@ -450,7 +521,7 @@ export default function TransactionsPage() {
                   type="button"
                   onClick={() => toggleVisibleCategory(cat)}
                   className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                    isSelected ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    isSelected ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}
                 >
                   {cat}
@@ -461,7 +532,7 @@ export default function TransactionsPage() {
               type="button"
               onClick={() => toggleVisibleCategory(UNKNOWN_CATEGORY_LABEL)}
               className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                visibleCategories.includes(UNKNOWN_CATEGORY_LABEL) ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                visibleCategories.includes(UNKNOWN_CATEGORY_LABEL) ? 'bg-sky-100 text-sky-800' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
               }`}
             >
               {UNKNOWN_CATEGORY_LABEL}
@@ -474,34 +545,32 @@ export default function TransactionsPage() {
           </p>
         </div>
 
-        {/* งบรายจ่ายต่อวัน (จากงบที่เหลือในงวด เฉพาะหมวดผันแปร) */}
-        <div className="mb-4 bg-white rounded-lg shadow-sm p-4">
+        {/* งบรายจ่ายต่อวัน */}
+        <div className="mb-5 bg-white rounded-2xl shadow-sm p-4">
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">งบรายจ่ายต่อวัน</span>
-              <span className="text-xs text-gray-500">งบต่อวันจากงบที่เหลือในงวด (เฉพาะหมวดผันแปร)</span>
-            </div>
+            <p className="text-sm font-medium text-gray-600">งบรายจ่ายต่อวัน</p>
+            <p className="text-xs text-gray-500">งบต่อวันจากงบที่เหลือในงวด (เฉพาะหมวดผันแปร)</p>
             {!hasAnyVariableBudget ? (
               <p className="text-sm text-amber-600 py-2">
                 กำหนดงบรายเดือนต่อหมวดผันแปรในหน้าโปรไฟล์
               </p>
             ) : (
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-gray-50 rounded-lg p-2">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-gray-50 rounded-xl p-3">
                   <p className="text-xs text-gray-500">งบวันนี้</p>
-                  <p className="text-sm font-semibold text-gray-800">
+                  <p className="text-lg font-bold text-gray-800">
                     {Math.round(dailyBudget).toLocaleString('th-TH')}
                   </p>
                   <p className="text-xs text-gray-400">บาท</p>
                 </div>
-                <div className="bg-red-50 rounded-lg p-2">
+                <div className="bg-amber-50 rounded-xl p-3">
                   <p className="text-xs text-gray-500">ใช้ไปวันนี้</p>
-                  <p className="text-sm font-semibold text-red-600">{expenseToday.toLocaleString('th-TH')}</p>
+                  <p className="text-lg font-bold text-amber-700">{expenseToday.toLocaleString('th-TH')}</p>
                   <p className="text-xs text-gray-400">บาท</p>
                 </div>
-                <div className="bg-green-50 rounded-lg p-2">
+                <div className="bg-emerald-50 rounded-xl p-3">
                   <p className="text-xs text-gray-500">คงเหลือ</p>
-                  <p className="text-sm font-semibold text-green-600">
+                  <p className="text-lg font-bold text-emerald-700">
                     {Math.round(remainingToday).toLocaleString('th-TH')}
                   </p>
                   <p className="text-xs text-gray-400">บาท</p>
@@ -511,8 +580,8 @@ export default function TransactionsPage() {
           </div>
         </div>
 
-        {/* Add Item Button */}
-        <div className="mb-4">
+        {/* Add Item Button - soft style */}
+        <div className="mb-5">
           <button
             onClick={() => {
               setEditingTransaction(null)
@@ -525,30 +594,27 @@ export default function TransactionsPage() {
               })
               setShowModal(true)
             }}
-            className="w-full bg-blue-600 text-white px-4 py-3 rounded-lg font-medium hover:bg-blue-700"
+            className="w-full bg-sky-50 text-sky-800 border border-sky-200/60 px-4 py-3 rounded-2xl font-medium hover:bg-sky-100/80 transition-colors"
           >
             + เพิ่มรายการ
           </button>
         </div>
 
-        {/* Transactions List */}
-        <div className="space-y-2">
+        {/* Transactions List - card style, more spacing, subtle type */}
+        <div className="space-y-3">
           {filteredTransactions.length === 0 ? (
-            <div className="bg-white p-8 rounded-lg shadow-sm text-center text-gray-500">
+            <div className="bg-white p-8 rounded-2xl shadow-sm text-center text-gray-500">
               ยังไม่มีรายการในเดือนนี้
             </div>
           ) : (
-            filteredTransactions.map((transaction) => (
+            <>
+            {displayedTransactions.map((transaction) => (
               <div
                 key={transaction.id}
-                className="bg-white p-4 rounded-lg shadow-sm flex items-center justify-between"
+                className="bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between border border-gray-100"
               >
-                <div className="flex items-center gap-3 flex-1">
-                  <div className={`p-2 rounded-lg ${
-                    transaction.type === 'income' ? 'bg-green-100' : 'bg-red-100'
-                  }`}>
-                    <CategoryIcon category={transaction.category || ''} />
-                  </div>
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <CategoryIcon category={transaction.category || ''} />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800 flex items-center gap-2 flex-wrap min-w-0">
                       <span className="min-w-0 truncate">{transaction.category || '-'}</span>
@@ -559,7 +625,7 @@ export default function TransactionsPage() {
                       })()}
                     </p>
                     <p className="text-xs text-gray-500">
-                      {format(new Date(transaction.date), 'yyyy-MM-dd')}
+                      {format(new Date(transaction.date), 'dd MMM yyyy')}
                     </p>
                     {transaction.description && transaction.description.trim() !== '' && (
                       <p className="text-xs text-gray-500 truncate mt-0.5" title={transaction.description}>
@@ -568,16 +634,16 @@ export default function TransactionsPage() {
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <p className={`text-sm font-semibold ${
-                    transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                <div className="flex items-center gap-3 shrink-0">
+                  <p className={`text-base font-bold ${
+                    transaction.type === 'income' ? 'text-emerald-600' : 'text-amber-700'
                   }`}>
                     {transaction.type === 'income' ? '+' : '-'}
                     {Number(transaction.amount).toLocaleString('th-TH')}
                   </p>
                   <button
                     onClick={() => handleDelete(transaction.id)}
-                    className="p-2 text-gray-400 hover:text-red-600"
+                    className="p-2 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -585,7 +651,17 @@ export default function TransactionsPage() {
                   </button>
                 </div>
               </div>
-            ))
+            ))}
+            {hasMore && (
+              <button
+                type="button"
+                onClick={() => setDisplayCount((c) => c + PAGE_SIZE)}
+                className="w-full py-3 rounded-2xl border border-gray-200 text-gray-600 text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                โหลดเพิ่ม ({filteredTransactions.length - displayCount} รายการ)
+              </button>
+            )}
+            </>
           )}
         </div>
       </div>
@@ -615,10 +691,10 @@ export default function TransactionsPage() {
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, type: 'expense', category: '' })}
-                  className={`flex-1 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
                     formData.type === 'expense'
-                      ? 'bg-gray-800 text-white'
-                      : 'bg-gray-100 text-gray-700'
+                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                      : 'bg-gray-100 text-gray-600'
                   }`}
                 >
                   รายจ่าย
@@ -626,10 +702,10 @@ export default function TransactionsPage() {
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, type: 'income', category: '' })}
-                  className={`flex-1 py-3 rounded-lg font-medium transition-colors ${
+                  className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
                     formData.type === 'income'
-                      ? 'bg-gray-800 text-white'
-                      : 'bg-gray-100 text-gray-700'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-gray-100 text-gray-600'
                   }`}
                 >
                   รายรับ
@@ -709,7 +785,7 @@ export default function TransactionsPage() {
               {/* Save Button */}
               <button
                 type="submit"
-                className="w-full bg-gray-800 text-white py-3 rounded-lg font-medium hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="w-full bg-sky-500 text-white py-3 rounded-xl font-medium hover:bg-sky-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 disabled={!formData.category || !formData.amount || Number(formData.amount) <= 0 || !formData.date}
               >
                 บันทึก

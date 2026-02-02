@@ -7,48 +7,55 @@ type Props = {
   currentBalance: number
   daysLeft: number
   remainingDays: number
+  /** Short coach-style recommendation (e.g. "ค่าใช้จ่ายอาหารสูงกว่าปกติ ลองลดลงวันละ 50 บาท") */
+  recommendation?: string
 }
 
-const STATUS_CONFIG: Record<FinancialStatus, { label: string; bg: string; text: string; border: string; message: string }> = {
+const STATUS_CONFIG: Record<FinancialStatus, { label: string; bg: string; text: string; soft: string }> = {
   Healthy: {
-    label: 'แข็งแรง',
-    bg: 'bg-green-50',
-    text: 'text-green-800',
-    border: 'border-green-200',
-    message: 'ยอดคงเหลือเพียงพอสำหรับวันที่มีเหลือในเดือนนี้ ใช้จ่ายตามแผนได้',
+    label: 'ปลอดภัย',
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    soft: 'bg-emerald-100/60',
   },
   Warning: {
-    label: 'ควรระวัง',
+    label: 'เสี่ยง',
     bg: 'bg-amber-50',
-    text: 'text-amber-800',
-    border: 'border-amber-200',
-    message: 'ยอดคงเหลืออาจไม่พอถึงสิ้นเดือน ลดรายจ่ายหรือเพิ่มรายรับ',
+    text: 'text-amber-700',
+    soft: 'bg-amber-100/60',
   },
   Risk: {
-    label: 'มีความเสี่ยง',
+    label: 'อาจติดลบ',
     bg: 'bg-red-50',
-    text: 'text-red-800',
-    border: 'border-red-200',
-    message: 'คาดการณ์สิ้นเดือนติดลบ ควรลดการใช้จ่ายหรือหาแหล่งรายได้เพิ่ม',
+    text: 'text-red-700',
+    soft: 'bg-red-100/60',
   },
 }
 
-export default function FinancialStatusCard({ status, currentBalance, daysLeft, remainingDays }: Props) {
+export default function FinancialStatusCard({
+  status,
+  currentBalance,
+  daysLeft,
+  remainingDays,
+  recommendation,
+}: Props) {
   const config = STATUS_CONFIG[status]
   const daysLeftDisplay = daysLeft === Infinity ? '∞' : Math.floor(daysLeft)
 
   return (
-    <div className={`rounded-xl border-2 p-4 ${config.bg} ${config.border}`}>
-      <h2 className="text-lg font-bold text-gray-900 mb-2">สถานะการเงินเดือนนี้</h2>
+    <div className={`rounded-2xl p-5 ${config.bg} shadow-sm`}>
       <div className="flex items-center gap-2 mb-2">
-        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${config.text} ${config.bg}`}>
+        <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium ${config.soft} ${config.text}`}>
           {config.label}
         </span>
       </div>
-      <p className="text-sm text-gray-700 mb-2">{config.message}</p>
-      <div className="text-xs text-gray-500">
-        ยอดคงเหลือปัจจุบัน {currentBalance.toLocaleString('th-TH')} บาท · คงอยู่ได้ประมาณ {daysLeftDisplay} วัน (เหลืออีก {remainingDays} วันในเดือน)
-      </div>
+      {recommendation && (
+        <p className="text-sm text-gray-600 mb-3 leading-relaxed">{recommendation}</p>
+      )}
+      <p className="text-xs text-gray-500">
+        ยอดคงเหลือตอนนี้ <span className="font-medium text-gray-700">{currentBalance.toLocaleString('th-TH')} บาท</span>
+        {' · '}คงอยู่ได้ประมาณ {daysLeftDisplay} วัน (เหลืออีก {remainingDays} วันในเดือน)
+      </p>
     </div>
   )
 }

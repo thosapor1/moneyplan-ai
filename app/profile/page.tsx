@@ -167,7 +167,7 @@ export default function ProfilePage() {
     saveProfile()
   }
 
-  type NumericField = 'fixed_expense' | 'variable_expense' | 'saving' | 'investment' | 'liquid_assets' | 'total_assets' | 'total_liabilities'
+  type NumericField = 'fixed_expense' | 'variable_expense' | 'monthly_debt_payment' | 'saving' | 'investment' | 'liquid_assets' | 'total_assets' | 'total_liabilities'
   const getNumericDisplay = (field: NumericField) =>
     numericInputs[field] !== undefined ? numericInputs[field] : String(profile[field] ?? 0)
   const handleNumericChange = (field: NumericField, e: React.ChangeEvent<HTMLInputElement>) =>
@@ -206,9 +206,9 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
-      {/* Header */}
-      <div className="bg-gray-800 text-white px-4 py-3 flex justify-between items-center">
-        <h1 className="text-lg font-semibold">สุขภาพการเงิน</h1>
+      {/* Header - match Dashboard */}
+      <div className="bg-white shadow-sm px-4 py-3 flex justify-between items-center">
+        <h1 className="text-lg font-semibold text-gray-800">สุขภาพการเงิน</h1>
         <div className="flex items-center gap-3">
           <button
             onClick={async () => {
@@ -216,15 +216,15 @@ export default function ProfilePage() {
               router.push('/auth/login')
               router.refresh()
             }}
-            className="p-2 text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg transition-colors"
+            className="p-2 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
             title="ออกจากระบบ"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
             </svg>
           </button>
-          <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
@@ -234,18 +234,20 @@ export default function ProfilePage() {
       <div className="max-w-md mx-auto px-4 py-4">
 
         {saving && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-center gap-2 mb-4">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-            <span className="text-sm text-blue-800">กำลังบันทึกข้อมูล...</span>
+          <div className="bg-sky-50 border border-sky-200 rounded-2xl p-3 flex items-center gap-2 mb-5">
+            <div className="animate-spin rounded-full h-4 w-4 border-2 border-sky-500 border-t-transparent"></div>
+            <span className="text-sm text-sky-800">กำลังบันทึกข้อมูล...</span>
           </div>
         )}
 
-        <div className="space-y-4">
-          {/* งบรายรับรายจ่าย */}
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <div className="mb-4 pb-3 border-b border-gray-200">
-              <h3 className="text-base font-bold text-gray-800">งบรายรับรายจ่าย (รายเดือน)</h3>
+        <div className="space-y-5">
+          {/* 🏦 Monthly Income & Fixed Expenses */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">🏦</span>
+              <h3 className="text-base font-bold text-gray-800">รายได้และรายจ่ายรายเดือน</h3>
             </div>
+            <p className="text-xs text-gray-500 mb-4">ตั้งค่ารายได้และรายจ่ายโดยประมาณ เพื่อให้แอปช่วยคำนวณงบและเป้าหมายได้แม่นยำ</p>
             <div className="space-y-4">
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
@@ -260,11 +262,11 @@ export default function ProfilePage() {
                     </div>
                   </div>
                 </label>
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <p className="text-lg font-bold text-green-600 mb-1">
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4">
+                  <p className="text-xl font-bold text-emerald-700 mb-1">
                     {totalIncome.toLocaleString('th-TH')} บาท
                   </p>
-                  <p className="text-xs text-green-600">คำนวณจากรายรับในหน้า &quot;รายรับรายจ่าย&quot;</p>
+                  <p className="text-xs text-emerald-600">คำนวณจากรายรับในหน้า &quot;รายรับรายจ่าย&quot;</p>
                 </div>
               </div>
               <div className="space-y-3">
@@ -286,7 +288,7 @@ export default function ProfilePage() {
                     value={getNumericDisplay('fixed_expense')}
                     onChange={(e) => handleNumericChange('fixed_expense', e)}
                     onBlur={() => handleNumericBlur('fixed_expense')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-gray-900 placeholder:text-gray-400 bg-white"
                     min="0"
                     step="0.01"
                   />
@@ -295,9 +297,9 @@ export default function ProfilePage() {
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                     <span>รายจ่ายผันแปร (บาท)</span>
                     <div className="group relative">
-                      <span className="cursor-help text-blue-500 hover:text-blue-700">ℹ️</span>
+                      <span className="cursor-help text-sky-500 hover:text-sky-700">ℹ️</span>
                       <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                        รายจ่ายที่เปลี่ยนแปลงได้ตามการใช้จ่าย เช่น ค่าอาหาร ค่าเดินทาง ค่าซื้อของใช้ส่วนตัว ค่าเสื้อผ้า ค่าบันเทิง
+                        รายจ่ายที่เปลี่ยนแปลงได้ตามการใช้จ่าย เช่น ค่าอาหาร ค่าเดินทาง ค่าซื้อของใช้ส่วนตัว
                         <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
                           <div className="border-4 border-transparent border-t-gray-800"></div>
                         </div>
@@ -309,18 +311,18 @@ export default function ProfilePage() {
                     value={getNumericDisplay('variable_expense')}
                     onChange={(e) => handleNumericChange('variable_expense', e)}
                     onBlur={() => handleNumericBlur('variable_expense')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-gray-900 placeholder:text-gray-400 bg-white"
                     min="0"
                     step="0.01"
                   />
                 </div>
                 <div>
                   <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                    <span>เงินออม (บาท)</span>
+                    <span>เงินผ่อนหนี้ต่อเดือน (บาท)</span>
                     <div className="group relative">
-                      <span className="cursor-help text-blue-500 hover:text-blue-700">ℹ️</span>
+                      <span className="cursor-help text-sky-500 hover:text-sky-700">ℹ️</span>
                       <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                        เงินที่เก็บออมไว้ในรูปแบบที่ปลอดภัยและถอนได้ง่าย เช่น เงินฝากออมทรัพย์ เงินฝากประจำ เพื่อใช้ในยามฉุกเฉินหรือเป้าหมายระยะสั้น
+                        จำนวนเงินที่จ่ายชำระหนี้ทุกเดือน เช่น ผ่อนบัตรเครดิต ผ่อนรถ ผ่อนบ้าน
                         <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
                           <div className="border-4 border-transparent border-t-gray-800"></div>
                         </div>
@@ -329,33 +331,10 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="number"
-                    value={getNumericDisplay('saving')}
-                    onChange={(e) => handleNumericChange('saving', e)}
-                    onBlur={() => handleNumericBlur('saving')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
-                    min="0"
-                    step="0.01"
-                  />
-                </div>
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                    <span>เงินลงทุน (บาท)</span>
-                    <div className="group relative">
-                      <span className="cursor-help text-blue-500 hover:text-blue-700">ℹ️</span>
-                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                        เงินที่นำไปลงทุนเพื่อสร้างผลตอบแทนในระยะยาว เช่น กองทุนรวม หุ้น พันธบัตร เพื่อเพิ่มมูลค่าทางการเงินในอนาคต
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
-                          <div className="border-4 border-transparent border-t-gray-800"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </label>
-                  <input
-                    type="number"
-                    value={getNumericDisplay('investment')}
-                    onChange={(e) => handleNumericChange('investment', e)}
-                    onBlur={() => handleNumericBlur('investment')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                    value={getNumericDisplay('monthly_debt_payment')}
+                    onChange={(e) => handleNumericChange('monthly_debt_payment', e)}
+                    onBlur={() => handleNumericBlur('monthly_debt_payment')}
+                    className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-gray-900 placeholder:text-gray-400 bg-white"
                     min="0"
                     step="0.01"
                   />
@@ -364,121 +343,167 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* กำหนดวันสิ้นเดือน */}
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <div className="mb-4 pb-3 border-b border-gray-200">
-              <h3 className="text-base font-bold text-gray-800">กำหนดวันสิ้นเดือน</h3>
-              <p className="text-xs text-gray-500 mt-1">ใช้สำหรับคำนวณงบรายวัน เหลืออีกกี่วันในเดือน ฯลฯ ค่าเริ่มต้น = ตามปฏิทิน (วันสุดท้ายของแต่ละเดือน)</p>
+          {/* 🎯 Financial Goals */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">🎯</span>
+              <h3 className="text-base font-bold text-gray-800">เป้าหมายการเงิน</h3>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">วันสิ้นเดือน</label>
-              <select
-                value={profile.month_end_day ?? 0}
-                onChange={async (e) => {
-                  const v = Number(e.target.value)
-                  setProfile((prev) => ({ ...prev, month_end_day: v }))
-                  const { data: { session } } = await supabase.auth.getSession()
-                  if (session) {
-                    await supabase
-                      .from('profiles')
-                      .update({ month_end_day: v, updated_at: new Date().toISOString() })
-                      .eq('id', session.user.id)
-                  }
-                }}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 bg-white"
-              >
-                <option value={0}>ตามปฏิทิน (วันสุดท้ายของแต่ละเดือน)</option>
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                  <option key={d} value={d}>วันที่ {d}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* งบแสดงสถานะการเงิน */}
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <div className="mb-4 pb-3 border-b border-gray-200">
-              <h3 className="text-base font-bold text-gray-800">งบแสดงสถานะการเงิน</h3>
-            </div>
+            <p className="text-xs text-gray-500 mb-4">ตั้งค่าสินทรัพย์ หนี้ และเป้าหมายออม/ลงทุน เพื่อให้แอปช่วยติดตามเป้าปลดหนี้และเป้าออมเงิน</p>
             <div className="space-y-3">
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
-                  <span>ทรัพย์สินสภาพคล่อง (บาท)</span>
+                  <span>เงินออม (บาท)</span>
                   <div className="group relative">
-                    <span className="cursor-help text-blue-500 hover:text-blue-700">ℹ️</span>
+                    <span className="cursor-help text-sky-500 hover:text-sky-700">ℹ️</span>
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                      ทรัพย์สินที่สามารถแปลงเป็นเงินสดได้เร็วและง่าย เช่น เงินสด เงินฝากออมทรัพย์ เงินฝากประจำที่ถอนได้ กองทุนรวมตลาดเงิน
+                      เงินที่เก็บออมต่อเดือน เช่น เงินฝากออมทรัพย์ เพื่อใช้ในยามฉุกเฉินหรือเป้าหมายระยะสั้น
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
                         <div className="border-4 border-transparent border-t-gray-800"></div>
                       </div>
                     </div>
                   </div>
                 </label>
-                  <input
-                    type="number"
-                    value={getNumericDisplay('liquid_assets')}
-                    onChange={(e) => handleNumericChange('liquid_assets', e)}
-                    onBlur={() => handleNumericBlur('liquid_assets')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
-                    min="0"
-                    step="0.01"
-                  />
+                <input
+                  type="number"
+                  value={getNumericDisplay('saving')}
+                  onChange={(e) => handleNumericChange('saving', e)}
+                  onBlur={() => handleNumericBlur('saving')}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <span>เงินลงทุน (บาท)</span>
+                  <div className="group relative">
+                    <span className="cursor-help text-sky-500 hover:text-sky-700">ℹ️</span>
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                      เงินที่นำไปลงทุนต่อเดือน เช่น กองทุนรวม หุ้น เพื่อสร้างผลตอบแทนระยะยาว
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                        <div className="border-4 border-transparent border-t-gray-800"></div>
+                      </div>
+                    </div>
+                  </div>
+                </label>
+                <input
+                  type="number"
+                  value={getNumericDisplay('investment')}
+                  onChange={(e) => handleNumericChange('investment', e)}
+                  onBlur={() => handleNumericBlur('investment')}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                  <span>ทรัพย์สินสภาพคล่อง (บาท)</span>
+                  <div className="group relative">
+                    <span className="cursor-help text-sky-500 hover:text-sky-700">ℹ️</span>
+                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                      เงินที่ถอนใช้ได้ง่าย เช่น เงินสด เงินฝากออมทรัพย์ ใช้คำนวณเป้าออมเงิน
+                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                        <div className="border-4 border-transparent border-t-gray-800"></div>
+                      </div>
+                    </div>
+                  </div>
+                </label>
+                <input
+                  type="number"
+                  value={getNumericDisplay('liquid_assets')}
+                  onChange={(e) => handleNumericChange('liquid_assets', e)}
+                  onBlur={() => handleNumericBlur('liquid_assets')}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                  min="0"
+                  step="0.01"
+                />
               </div>
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                   <span>ทรัพย์สินรวม (บาท)</span>
                   <div className="group relative">
-                    <span className="cursor-help text-blue-500 hover:text-blue-700">ℹ️</span>
+                    <span className="cursor-help text-sky-500 hover:text-sky-700">ℹ️</span>
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                      มูลค่ารวมของทรัพย์สินทั้งหมดที่คุณเป็นเจ้าของ เช่น บ้าน ที่ดิน รถยนต์ เงินฝากธนาคาร เงินลงทุน ทองคำ เครื่องประดับ
+                      มูลค่ารวมของทรัพย์สิน เช่น บ้าน รถ เงินฝาก เงินลงทุน
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
                         <div className="border-4 border-transparent border-t-gray-800"></div>
                       </div>
                     </div>
                   </div>
                 </label>
-                  <input
-                    type="number"
-                    value={getNumericDisplay('total_assets')}
-                    onChange={(e) => handleNumericChange('total_assets', e)}
-                    onBlur={() => handleNumericBlur('total_assets')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
-                    min="0"
-                    step="0.01"
-                  />
+                <input
+                  type="number"
+                  value={getNumericDisplay('total_assets')}
+                  onChange={(e) => handleNumericChange('total_assets', e)}
+                  onBlur={() => handleNumericBlur('total_assets')}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                  min="0"
+                  step="0.01"
+                />
               </div>
               <div>
                 <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
                   <span>หนี้สินรวม (บาท)</span>
                   <div className="group relative">
-                    <span className="cursor-help text-blue-500 hover:text-blue-700">ℹ️</span>
+                    <span className="cursor-help text-sky-500 hover:text-sky-700">ℹ️</span>
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 p-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
-                      มูลค่ารวมของหนี้สินทั้งหมดที่คุณต้องชำระ เช่น หนี้บ้าน หนี้รถ หนี้บัตรเครดิต หนี้สินเชื่อส่วนบุคคล หนี้กองทุนสำรองเลี้ยงชีพ
+                      ยอดหนี้รวมที่ต้องชำระ เช่น หนี้บ้าน หนี้รถ บัตรเครดิต ใช้คำนวณเป้าปลดหนี้
                       <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
                         <div className="border-4 border-transparent border-t-gray-800"></div>
                       </div>
                     </div>
                   </div>
                 </label>
-                  <input
-                    type="number"
-                    value={getNumericDisplay('total_liabilities')}
-                    onChange={(e) => handleNumericChange('total_liabilities', e)}
-                    onBlur={() => handleNumericBlur('total_liabilities')}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
-                    min="0"
-                    step="0.01"
-                  />
+                <input
+                  type="number"
+                  value={getNumericDisplay('total_liabilities')}
+                  onChange={(e) => handleNumericChange('total_liabilities', e)}
+                  onBlur={() => handleNumericBlur('total_liabilities')}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-gray-900 placeholder:text-gray-400 bg-white"
+                  min="0"
+                  step="0.01"
+                />
               </div>
             </div>
           </div>
 
-          {/* งบรายจ่ายรายเดือนต่อหมวด */}
-          <div className="bg-white p-4 rounded-lg shadow-sm">
-            <div className="mb-4 pb-3 border-b border-gray-200">
-              <h3 className="text-base font-bold text-gray-800">งบรายจ่ายรายเดือนต่อหมวด (บาท)</h3>
-              <p className="text-xs text-gray-500 mt-1">กำหนดงบสูงสุดต่อเดือนในแต่ละหมวด รายจ่ายที่เกินจะไม่ถูกตัดจากยอดรวม แต่ช่วยให้ติดตามได้</p>
+          {/* ⚙️ App Settings */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">⚙️</span>
+              <h3 className="text-base font-bold text-gray-800">ตั้งค่าแอป</h3>
             </div>
+            <p className="text-xs text-gray-500 mb-4">กำหนดวันสิ้นเดือนและงบสูงสุดต่อหมวด เพื่อให้การคำนวณงบรายวันและคำเตือนตรงกับชีวิตคุณ</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">วันสิ้นเดือน</label>
+                <select
+                  value={profile.month_end_day ?? 0}
+                  onChange={async (e) => {
+                    const v = Number(e.target.value)
+                    setProfile((prev) => ({ ...prev, month_end_day: v }))
+                    const { data: { session } } = await supabase.auth.getSession()
+                    if (session) {
+                      await supabase
+                        .from('profiles')
+                        .update({ month_end_day: v, updated_at: new Date().toISOString() })
+                        .eq('id', session.user.id)
+                    }
+                  }}
+                  className="w-full px-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-gray-900 bg-white"
+                >
+                  <option value={0}>ตามปฏิทิน (วันสุดท้ายของแต่ละเดือน)</option>
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>วันที่ {d}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">ใช้คำนวณงบรายวันและเหลืออีกกี่วันในงวด</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">งบรายจ่ายรายเดือนต่อหมวด (บาท)</p>
+                <p className="text-xs text-gray-500 mb-2">กำหนดงบสูงสุดต่อเดือนในแต่ละหมวด เพื่อติดตามและคำนวณงบต่อวัน</p>
             <div className="space-y-3">
               {EXPENSE_CATEGORIES.map((cat) => {
                 const value = categoryBudgets[cat] ?? 0
@@ -503,20 +528,23 @@ export default function ProfilePage() {
                         if (session) await saveCategoryBudgets(session.user.id, next)
                       }}
                       placeholder="0"
-                      className="w-28 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 text-right"
+                      className="w-28 px-3 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-gray-900 text-right"
                     />
                     <span className="text-xs text-gray-400 w-6">บาท</span>
                   </div>
                 )
               })}
             </div>
+              </div>
+            </div>
           </div>
 
           {/* ผลการวิเคราะห์การเงิน */}
           {profile.id && (
-            <div className="bg-white p-4 rounded-lg shadow-sm">
-              <div className="mb-4 pb-3 border-b border-gray-200">
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+              <div className="mb-3">
                 <h3 className="text-base font-bold text-gray-800">ผลการวิเคราะห์</h3>
+                <p className="text-xs text-gray-500 mt-1">ภาพรวมสุขภาพการเงินจากข้อมูลที่ตั้งค่า</p>
               </div>
               <div className="profile-analysis">
                 <FinancialAnalysis 
