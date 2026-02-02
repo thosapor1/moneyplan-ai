@@ -24,7 +24,7 @@ import {
   computeForecastEnd,
 } from '@/lib/forecast'
 import RecentBigExpenses from './components/RecentBigExpenses'
-import { getCategoryIcon } from '@/lib/category-icons'
+import { getCategoryIcon, getCategoryIconStyle } from '@/lib/category-icons'
 import { format, startOfMonth, endOfMonth, subMonths, addMonths, eachMonthOfInterval, startOfDay, endOfDay, eachDayOfInterval, subDays, startOfWeek, endOfWeek, eachWeekOfInterval, subWeeks, startOfYear, endOfYear, eachYearOfInterval, subYears } from 'date-fns'
 
 export default function DashboardPage() {
@@ -928,9 +928,9 @@ export default function DashboardPage() {
               {transactions.slice(0, 5).map((transaction) => (
                 <div key={transaction.id} className="px-4 py-3 flex items-center justify-between">
                   <div className="flex items-center gap-3 flex-1">
-                    <div className={`p-2 rounded-lg ${
-                      transaction.type === 'income' ? 'bg-green-100' : 'bg-red-100'
-                    }`}>
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      transaction.type === 'income' ? 'bg-green-100 text-green-800' : ''
+                    } ${transaction.type === 'expense' ? getCategoryIconStyle(transaction.category || '').bg + ' ' + getCategoryIconStyle(transaction.category || '').icon : ''}`}>
                       {getCategoryIcon(transaction.category || '', transaction.type)}
                     </div>
                     <div className="flex-1 min-w-0">

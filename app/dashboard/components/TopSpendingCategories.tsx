@@ -1,5 +1,6 @@
 'use client'
 
+import { getCategoryIcon, getCategoryIconStyle } from '@/lib/category-icons'
 import type { CategorySummary } from '@/lib/finance'
 
 type Props = {
@@ -7,26 +8,6 @@ type Props = {
   totalExpense: number
   /** Optional: category budget (บาท) to highlight over-budget in soft red */
   categoryBudgets?: Record<string, number>
-}
-
-const CATEGORY_ICONS: Record<string, string> = {
-  'อาหาร': '🍜',
-  'ค่าเดินทาง': '🚆',
-  'ที่พัก/ค่าเช่า': '🏠',
-  'สาธารณูปโภค': '💡',
-  'สุขภาพ': '❤️',
-  'บันเทิง': '🎬',
-  'การศึกษา': '📚',
-  'ช้อปปิ้ง': '🛍️',
-  'โทรศัพท์/อินเทอร์เน็ต': '📱',
-  'ผ่อนชำระหนี้': '📋',
-  'ลงทุน': '📈',
-  'ออมเงิน': '🐷',
-  'อื่นๆ': '📌',
-}
-
-function getIcon(category: string): string {
-  return CATEGORY_ICONS[category] ?? '📌'
 }
 
 export default function TopSpendingCategories({ categories, totalExpense, categoryBudgets }: Props) {
@@ -57,7 +38,9 @@ export default function TopSpendingCategories({ categories, totalExpense, catego
             <div key={cat.category} className="space-y-1">
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-700 truncate pr-2 flex items-center gap-1.5">
-                  <span className="text-base" title={cat.category}>{getIcon(cat.category)}</span>
+                  <span className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${getCategoryIconStyle(cat.category).bg} ${getCategoryIconStyle(cat.category).icon}`} title={cat.category}>
+                    {getCategoryIcon(cat.category)}
+                  </span>
                   {cat.category}
                 </span>
                 <span className={`font-medium shrink-0 ${isOverBudget ? 'text-red-600/90' : 'text-gray-900'}`}>
@@ -76,8 +59,10 @@ export default function TopSpendingCategories({ categories, totalExpense, catego
         {showOtherRow && (
           <div className="space-y-1 pt-1 border-t border-gray-100">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500 truncate pr-2 flex items-center gap-1.5">
-                <span className="text-base">📌</span>
+                <span className="text-gray-500 truncate pr-2 flex items-center gap-1.5">
+                <span className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-600">
+                  {getCategoryIcon('อื่นๆ')}
+                </span>
                 รวมหมวดอื่น
               </span>
               <span className="font-medium text-gray-600 shrink-0">
