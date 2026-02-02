@@ -90,13 +90,13 @@ function svg(path: string, className = ICON_SIZE) {
 const ICON_ELEMENTS: Record<IconKey, React.ReactNode> = {
   // Food: utensils (ช้อนส้อม) — fork and knife crossed
   food: svg(
-    'M7 2v7M5 2v4M9 2v4M7 9v13M17 2c-2 0-3 2-3 4v4h6V6c0-2-1-4-3-4zm0 8v12'
+    'M16 2v6m0 0l-4-4m4 4l4-4M8 2v6m0 0l4-4m-4 4l4 4M15 22v-6m0 0l-4 4m4-4l-4-4M8 22v-6m0 0l4 4m-4-4l4-4'
   ),
-  // Transit: bus/train arrows
-  transit: svg('M7 18c-1.7 0-3-1.3-3-3V7c0-2.8 2.2-5 5-5h6c2.8 0 5 2.2 5 5v8c0 1.7-1.3 3-3 3M7 18h10M8 18l-2 2M16 18l2 2M7 8h10M8 14h.01M16 14h.01'),
-  // Home
+  // Transit: arrows (ค่าเดินทาง)
+  transit: svg('M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'),
+  // Home (ที่พัก/ค่าเช่า)
   home: svg(
-    'M3 10.5L12 3l9 7.5M6 10v10h12V10M10 20v-6h4v6'
+    'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6'
   ),
   // Utilities: bolt/lightbulb
   utilities: svg(
@@ -106,18 +106,16 @@ const ICON_ELEMENTS: Record<IconKey, React.ReactNode> = {
   health: svg(
     'M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z'
   ),
-  // Entertainment: play/film
-  entertainment: svg(
-    'M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'
-  ),
+  // Entertainment (บันเทิง): play triangle
+  entertainment: svg('M8 5v14l11-7L8 5z'),
   // Education: book
   education: svg(
     'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253'
   ),
   // Shopping: bag/cart
   shopping: svg('M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z'),
-  // Phone/wifi
-  phone: svg('M15 3h-6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2M11 18h2M18 8c1.7 1.7 1.7 4.3 0 6M20 6c2.9 2.9 2.9 7.1 0 10'),
+  // Phone (โทรศัพท์/อินเทอร์เน็ต)
+  phone: svg('M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z'),
   // Debt: receipt/credit
   debt: svg(
     'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z'
