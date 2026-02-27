@@ -181,7 +181,7 @@ export function getCategoryIcon(
       );
     case "transit":
       return (
-        <IconSvg d="M8 7h12m0 0l-4-4m4 4l-4-4m0 6H4m0 0l4 4m-4-4l4-4" />
+        <IconSvg d="M4 8h16v6H4V8M6 17.5m-1.5 0a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0M18 17.5m-1.5 0a1.5 1.5 0 103 0 1.5 1.5 0 00-3 0" />
       );
     case "home":
       return (

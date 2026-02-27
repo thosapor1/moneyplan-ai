@@ -49,6 +49,7 @@ import {
   eachYearOfInterval,
   subYears,
 } from "date-fns";
+import { th } from "date-fns/locale";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -567,12 +568,12 @@ export default function DashboardPage() {
     monthlyDebtPayment > 0 && totalDebt > 0
       ? addMonths(now, monthsToPayoff)
       : null;
-  const initialDebtMock = totalDebt > 0 ? totalDebt * 1.2 : 0;
+  const initialDebtEstimate = totalDebt > 0 ? totalDebt * 1.2 : 0;
   const debtPaidPercent =
-    initialDebtMock > 0
+    initialDebtEstimate > 0
       ? Math.min(
           99,
-          Math.round(((initialDebtMock - totalDebt) / initialDebtMock) * 100),
+          Math.round(((initialDebtEstimate - totalDebt) / initialDebtEstimate) * 100),
         )
       : 0;
 
@@ -741,6 +742,11 @@ export default function DashboardPage() {
                 <p className="text-xs text-gray-500 mb-2">
                   ใช้จ่ายไปแล้วในเดือนนี้
                 </p>
+                {monthEndDay !== 0 && (
+                  <p className="text-xs text-gray-400 mb-1" title="ช่วงงวดที่ใช้คำนวณ">
+                    งวด {format(monthRange.start, "d MMM", { locale: th })} – {format(monthRange.end, "d MMM yyyy", { locale: th })}
+                  </p>
+                )}
                 <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden mb-3">
                   <div
                     className={`h-full rounded-full transition-all ${spendingBarOver80 ? "bg-red-400" : "bg-amber-300"}`}
@@ -788,7 +794,7 @@ export default function DashboardPage() {
                 <p className="text-xs text-gray-500 mb-1">ยอดหนี้คงเหลือ</p>
                 {debtPaidPercent > 0 && (
                   <p className="text-sm text-emerald-600 font-medium mb-2">
-                    ปลดแล้วประมาณ {debtPaidPercent}%
+                    ปลดแล้วประมาณ {debtPaidPercent}% <span className="text-gray-500 font-normal text-xs">(ประมาณการจากยอดคงเหลือ)</span>
                   </p>
                 )}
                 {payoffDate && (
@@ -831,6 +837,7 @@ export default function DashboardPage() {
               </span>
             </p>
             <p className="text-xs text-gray-500 mb-2">เก็บได้แล้ว / เป้าหมาย</p>
+            <p className="text-xs text-gray-400 mb-1">จากยอดสภาพคล่องในโปรไฟล์ และเป้าหมายที่ตั้ง</p>
             <p className="text-sm text-sky-600 font-medium mb-2">
               ความคืบหน้า {savingsProgressPercent}%
             </p>

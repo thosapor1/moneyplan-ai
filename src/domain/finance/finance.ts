@@ -62,9 +62,10 @@ export function getDaysInMonth(month: Date, customMonthEndDay: number): number {
  *
  * - customMonthEndDay = 0 => calendar month: [1st .. last day]
  * - customMonthEndDay = N (1..31) =>
- *   range is [N of previous month .. N of this month], clamped to month lengths.
+ *   range is [(N+1) of previous month .. N of this month] (inclusive), clamped to month lengths.
+ *   So each day belongs to exactly one period (no double-counting: salary on the 27th counts in one period only).
  *
- * Example: endDay=27 for Feb 2026 => start=Jan 27, end=Feb 27.
+ * Example: endDay=27 for Feb 2026 => start=Jan 28, end=Feb 27.
  */
 export function getMonthRange(month: Date, customMonthEndDay: number): { start: Date; end: Date } {
   if (customMonthEndDay <= 0) {
@@ -78,8 +79,13 @@ export function getMonthRange(month: Date, customMonthEndDay: number): { start: 
   const end = new Date(month.getFullYear(), month.getMonth(), lastDay)
 
   const prevMonthCalendarLast = new Date(month.getFullYear(), month.getMonth(), 0).getDate()
-  const startDay = Math.min(customMonthEndDay, prevMonthCalendarLast)
-  const start = new Date(month.getFullYear(), month.getMonth() - 1, startDay)
+  const startDay = customMonthEndDay + 1
+  let start: Date
+  if (startDay > prevMonthCalendarLast) {
+    start = new Date(month.getFullYear(), month.getMonth(), 1)
+  } else {
+    start = new Date(month.getFullYear(), month.getMonth() - 1, startDay)
+  }
 
   return { start, end }
 }

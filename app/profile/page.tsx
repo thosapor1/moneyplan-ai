@@ -16,6 +16,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [totalIncome, setTotalIncome] = useState(0)
+  const [totalSavingFromTransactions, setTotalSavingFromTransactions] = useState<number | undefined>(undefined)
+  const [totalDebtPaymentFromTransactions, setTotalDebtPaymentFromTransactions] = useState<number | undefined>(undefined)
   const [profile, setProfile] = useState<Profile>({
     id: '',
     monthly_debt_payment: 0,
@@ -89,13 +91,33 @@ export default function ProfilePage() {
         .from('transactions')
         .select('*')
         .eq('user_id', session.user.id)
-        .eq('type', 'income')
         .gte('date', format(start, 'yyyy-MM-dd'))
         .lte('date', format(end, 'yyyy-MM-dd'))
 
       if (!transactionsError && transactionsData) {
-        const income = transactionsData.reduce((sum, t) => sum + Number(t.amount), 0)
+        const income = transactionsData
+          .filter((t) => t.type === 'income')
+          .reduce((sum, t) => sum + Number(t.amount), 0)
         setTotalIncome(income)
+        // เงินออม+ลงทุนรายเดือนจากรายการในงวด (หมวด ออมเงิน, ลงทุน)
+        const savingSum = transactionsData
+          .filter(
+            (t) =>
+              t.type === 'expense' &&
+              (t.category?.trim() === 'ออมเงิน' || t.category?.trim() === 'ลงทุน')
+          )
+          .reduce((sum, t) => sum + Number(t.amount), 0)
+        setTotalSavingFromTransactions(savingSum)
+        // เงินผ่อนหนี้จากรายการในงวด (หมวด ผ่อนชำระหนี้)
+        const debtSum = transactionsData
+          .filter(
+            (t) => t.type === 'expense' && (t.category?.trim() === 'ผ่อนชำระหนี้')
+          )
+          .reduce((sum, t) => sum + Number(t.amount), 0)
+        setTotalDebtPaymentFromTransactions(debtSum)
+      } else {
+        setTotalSavingFromTransactions(undefined)
+        setTotalDebtPaymentFromTransactions(undefined)
       }
 
       // โหลดงบรายจ่ายรายเดือนต่อหมวดจาก DB
@@ -626,9 +648,11 @@ export default function ProfilePage() {
                 <p className="text-xs text-gray-500 mt-1">ภาพรวมสุขภาพการเงินจากข้อมูลที่ตั้งค่า</p>
               </div>
               <div className="profile-analysis">
-                <FinancialAnalysis 
-                  profile={profile} 
-                  totalIncome={totalIncome > 0 ? totalIncome : (profile.fixed_expense + profile.variable_expense + profile.saving + profile.investment)} 
+                <FinancialAnalysis
+                  profile={profile}
+                  totalIncome={totalIncome > 0 ? totalIncome : ((profile.fixed_expense ?? 0) + (profile.variable_expense ?? 0) + (profile.saving ?? 0) + (profile.investment ?? 0))}
+                  totalSavingFromTransactions={totalSavingFromTransactions}
+                  totalDebtPaymentFromTransactions={totalDebtPaymentFromTransactions}
                 />
               </div>
             </div>

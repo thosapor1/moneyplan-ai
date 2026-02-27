@@ -37,9 +37,9 @@ describe('getActivePeriodMonth', () => {
 })
 
 describe('getActiveMonthRange', () => {
-  it('endDay=27, asOf=Jan 31 → 2026-01-27..2026-02-27', () => {
+  it('endDay=27, asOf=Jan 31 → 2026-01-28..2026-02-27 (no overlap: 27th in one period only)', () => {
     const range = getActiveMonthRange(new Date(2026, 0, 31), 27)
-    expect(toYMD(range.start)).toBe('2026-01-27')
+    expect(toYMD(range.start)).toBe('2026-01-28')
     expect(toYMD(range.end)).toBe('2026-02-27')
   })
   it('endDay=0, asOf=Jan 31 → calendar Jan', () => {
@@ -50,26 +50,26 @@ describe('getActiveMonthRange', () => {
 })
 
 describe('getPeriodDays', () => {
-  it('Jan 27 to Feb 27 = 32 days', () => {
+  it('Jan 28 to Feb 27 = 31 days', () => {
     const range = {
-      start: new Date(2026, 0, 27),
+      start: new Date(2026, 0, 28),
       end: new Date(2026, 1, 27),
     }
-    expect(getPeriodDays(range)).toBe(32)
+    expect(getPeriodDays(range)).toBe(31)
   })
 })
 
 describe('getRemainingDaysInPeriod', () => {
-  it('asOf=Jan 31, range Jan27–Feb27 → 28 days left', () => {
+  it('asOf=Jan 31, range Jan28–Feb27 → 28 days left', () => {
     const range = {
-      start: new Date(2026, 0, 27),
+      start: new Date(2026, 0, 28),
       end: new Date(2026, 1, 27),
     }
     expect(getRemainingDaysInPeriod(new Date(2026, 0, 31), range)).toBe(28)
   })
   it('asOf before start → 0', () => {
     const range = {
-      start: new Date(2026, 0, 27),
+      start: new Date(2026, 0, 28),
       end: new Date(2026, 1, 27),
     }
     expect(getRemainingDaysInPeriod(new Date(2026, 0, 15), range)).toBe(0)
@@ -77,21 +77,21 @@ describe('getRemainingDaysInPeriod', () => {
 })
 
 describe('getDaysElapsedInPeriod', () => {
-  it('asOf=Jan 31, range Jan27–Feb27 → 5 days elapsed', () => {
+  it('asOf=Jan 31, range Jan28–Feb27 → 4 days elapsed', () => {
     const range = {
-      start: new Date(2026, 0, 27),
+      start: new Date(2026, 0, 28),
       end: new Date(2026, 1, 27),
     }
-    expect(getDaysElapsedInPeriod(new Date(2026, 0, 31), range)).toBe(5)
+    expect(getDaysElapsedInPeriod(new Date(2026, 0, 31), range)).toBe(4)
   })
 })
 
 describe('formatRange', () => {
   it('formats as YYYY-MM-DD..YYYY-MM-DD', () => {
     const range = {
-      start: new Date(2026, 0, 27),
+      start: new Date(2026, 0, 28),
       end: new Date(2026, 1, 27),
     }
-    expect(formatRange(range)).toBe('2026-01-27..2026-02-27')
+    expect(formatRange(range)).toBe('2026-01-28..2026-02-27')
   })
 })

@@ -4,8 +4,9 @@
  * Single source of truth for how "a month" is interpreted in the app:
  * - monthEndDay = 0  -> calendar month (1..last day)
  * - monthEndDay = N  -> billing period ends on day N of some month.
- *   The period is [N of previous month .. N of end month] (inclusive),
- *   with day clamped to month length when needed (e.g. Feb 30 -> Feb 28/29).
+ *   The period is [(N+1) of previous month .. N of end month] (inclusive),
+ *   so each day belongs to exactly one period (e.g. salary on the 27th counts once).
+ *   Clamped to month length when needed (e.g. Feb 30 -> Feb 28/29).
  *
  * This module is pure (no I/O, no browser APIs) and safe for unit tests.
  */

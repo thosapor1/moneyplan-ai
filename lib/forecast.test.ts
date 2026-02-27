@@ -46,21 +46,21 @@ describe('computePlannedRemaining', () => {
       computePlannedRemaining(
         [],
         new Date('2026-02-01'),
-        new Date('2026-01-27'),
+        new Date('2026-01-28'),
         new Date('2026-02-27')
       )
     ).toBe(0)
   })
   it('does not count rent again when already paid this period', () => {
     const txs = [
-      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2026-01-27' },
-      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2025-12-27' },
-      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2025-11-27' },
+      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2026-01-28' },
+      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2025-12-28' },
+      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2025-11-28' },
     ]
     const planned = computePlannedRemaining(
       txs,
       new Date('2026-02-01'),
-      new Date('2026-01-27'),
+      new Date('2026-01-28'),
       new Date('2026-02-27')
     )
     expect(planned).toBe(0)

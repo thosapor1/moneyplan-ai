@@ -5,39 +5,45 @@ import { Profile } from '@/lib/supabase'
 interface FinancialAnalysisProps {
   profile: Profile
   totalIncome: number
+  /** เงินออม+ลงทุนรายเดือนจากรายการธุรกรรมในงวด (ถ้ามี) ใช้แทน profile.saving + profile.investment */
+  totalSavingFromTransactions?: number
+  /** เงินผ่อนหนี้รวมจากรายการธุรกรรมในงวด (ถ้ามี) ใช้แทน profile.monthly_debt_payment */
+  totalDebtPaymentFromTransactions?: number
 }
 
-export default function FinancialAnalysis({ profile, totalIncome }: FinancialAnalysisProps) {
-  // คำนวณตัวชี้วัดทางการเงิน
-  
+export default function FinancialAnalysis({
+  profile,
+  totalIncome,
+  totalSavingFromTransactions,
+  totalDebtPaymentFromTransactions,
+}: FinancialAnalysisProps) {
   // อัตราส่วนการออมและการลงทุน = (เงินออมและเงินลงทุนรายเดือน x 100) / รายได้รวมต่อเดือน
-  // เงินออมและเงินลงทุนรายเดือน = saving (ช่องเงินออมในงบรายรับรายจ่าย)
-  // รายได้รวมต่อเดือน = totalIncome
-  const savingRatio = totalIncome > 0 
-    ? (profile.saving / totalIncome) * 100 
-    : 0
-  
+  // ถ้ามีรายการธุรกรรม ใช้ sum(รายจ่าย หมวดออมเงิน+ลงทุน) ในงวด; ไม่เช่นนั้นใช้ profile.saving + profile.investment
+  const savingFromProfile = (profile.saving ?? 0) + (profile.investment ?? 0)
+  const monthlySavingAndInvestment =
+    totalSavingFromTransactions !== undefined && totalSavingFromTransactions >= 0
+      ? totalSavingFromTransactions
+      : savingFromProfile
+  const savingRatioRaw = totalIncome > 0 ? (monthlySavingAndInvestment / totalIncome) * 100 : 0
+  const savingRatio = Math.min(savingRatioRaw, 100) // แสดงสูงสุด 100% ถ้าคำนวณเกิน (อาจกรอกผิดหรือใช้ค่าสะสม)
+  const savingRatioOverflow = savingRatioRaw > 100
+
   // อัตราส่วนเงินผ่อนชำระหนี้ต่อรายได้ = (เงินผ่อนชำระหนี้ต่อเดือน x 100) / รายได้รวมต่อเดือน
-  // เงินผ่อนชำระหนี้ต่อเดือน = fixed_expense (รายจ่ายคงที่)
-  // รายได้รวมต่อเดือน = totalIncome
-  const debtRatio = totalIncome > 0 
-    ? (profile.fixed_expense / totalIncome) * 100 
-    : 0
-  
-  // อัตราส่วนเงินสำรองเผื่อฉุกเฉิน = ทรัพย์สินสภาพคล่อง / รายจ่ายรวมต่อเดือน
-  // ทรัพย์สินสภาพคล่อง = liquid_assets + saving (รวมเงินออมที่สะสมไว้)
-  // รายจ่ายรวมต่อเดือน = fixed_expense + variable_expense
-  const monthlyExpense = profile.fixed_expense + profile.variable_expense
-  // รวมเงินออมเข้าไปในทรัพย์สินสภาพคล่อง (เงินฝากออมทรัพย์ เงินฝากประจำ เป็นสินทรัพย์สภาพคล่อง)
-  const totalLiquidAssets = profile.liquid_assets + profile.saving
-  const emergencyRatio = monthlyExpense > 0 
-    ? totalLiquidAssets / monthlyExpense 
-    : 0
+  // ถ้ามีรายการธุรกรรม ใช้ sum(รายจ่าย หมวดผ่อนชำระหนี้) ในงวด; ไม่เช่นนั้นใช้ profile.monthly_debt_payment
+  const monthlyDebtPayment =
+    totalDebtPaymentFromTransactions !== undefined && totalDebtPaymentFromTransactions >= 0
+      ? totalDebtPaymentFromTransactions
+      : (profile.monthly_debt_payment ?? 0)
+  const debtRatio = totalIncome > 0 ? (monthlyDebtPayment / totalIncome) * 100 : 0
+
+  // เงินสำรองเผื่อฉุกเฉิน = ทรัพย์สินสภาพคล่อง / รายจ่ายรวมต่อเดือน (จำนวนเดือน)
+  // ทรัพย์สินสภาพคล่อง = liquid_assets เท่านั้น (ไม่บวก profile.saving เพราะเป็นจำนวนต่อเดือน ไม่ใช่ยอดสะสม)
+  const monthlyExpense = (profile.fixed_expense ?? 0) + (profile.variable_expense ?? 0)
+  const totalLiquidAssets = profile.liquid_assets ?? 0
+  const emergencyRatio = monthlyExpense > 0 ? totalLiquidAssets / monthlyExpense : 0
   
   // ความมั่งคั่งสุทธิ = ทรัพย์สินรวม - หนี้สินรวม
-  // ทรัพย์สินรวม = total_assets
-  // หนี้สินรวม = total_liabilities
-  const netWorth = profile.total_assets - profile.total_liabilities
+  const netWorth = (profile.total_assets ?? 0) - (profile.total_liabilities ?? 0)
 
   // วิเคราะห์สถานะการเงิน
   const getFinancialStatus = () => {
@@ -76,7 +82,7 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
     if (emergencyRatio >= 6) {
       strengths.push('มีเงินสำรองเผื่อฉุกเฉินเพียงพอ')
     }
-    if (netWorth > 0 && netWorth > profile.total_assets * 0.3) {
+    if (netWorth > 0 && (profile.total_assets ?? 0) > 0 && netWorth > (profile.total_assets ?? 0) * 0.3) {
       strengths.push('มีความมั่งคั่งสุทธิในระดับดี')
     }
     if (strengths.length === 0) {
@@ -93,7 +99,7 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
     }
     if (debtRatio > 50) {
       weaknesses.push(`อัตราส่วนเงินผ่อนชำระหนี้ (${debtRatio.toFixed(1)}%) สูงเกินไป ควรไม่เกิน 50%`)
-    } else if (debtRatio > 15 && profile.variable_expense > 0) {
+    } else if (debtRatio > 15 && (profile.variable_expense ?? 0) > 0) {
       weaknesses.push('มีหนี้บริโภคที่อาจส่งผลกระทบต่อการออม')
     }
     if (emergencyRatio < 6) {
@@ -102,7 +108,7 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
     if (netWorth < 0) {
       weaknesses.push('ความมั่งคั่งสุทธิเป็นค่าลบ หมายความว่ามีหนี้สินมากกว่าทรัพย์สิน')
     }
-    if (profile.variable_expense > profile.fixed_expense * 0.5) {
+    if ((profile.variable_expense ?? 0) > (profile.fixed_expense ?? 0) * 0.5) {
       weaknesses.push('รายจ่ายผันแปรสูง อาจส่งผลต่อความมั่นคงทางการเงิน')
     }
     if (weaknesses.length === 0) {
@@ -138,7 +144,9 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
     
     if (savingRatio < 10) {
       const targetSaving = totalIncome * 0.1
-      recommendations.push(`เพิ่มการออมและการลงทุนให้ได้อย่างน้อย ${targetSaving.toLocaleString('th-TH')} บาทต่อเดือน (10% ของรายได้)`)
+      const current = monthlySavingAndInvestment
+      const shortfall = Math.max(0, targetSaving - current)
+      recommendations.push(`เพิ่มการออมและการลงทุนให้ได้อย่างน้อย ${targetSaving.toLocaleString('th-TH')} บาทต่อเดือน (10% ของรายได้)${shortfall > 0 ? ` — ยังขาดอีก ${shortfall.toLocaleString('th-TH')} บาท` : ''}`)
     }
     
     if (emergencyRatio < 6) {
@@ -155,7 +163,7 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
       recommendations.push('หลีกเลี่ยงการก่อหนี้ใหม่และวางแผนชำระหนี้ที่มีอยู่ให้เร็วขึ้น')
     }
     
-    if (profile.variable_expense > profile.fixed_expense * 0.5) {
+    if ((profile.variable_expense ?? 0) > (profile.fixed_expense ?? 0) * 0.5) {
       recommendations.push('ควบคุมรายจ่ายผันแปรให้อยู่ในระดับที่เหมาะสม โดยตั้งงบประมาณรายจ่ายแต่ละประเภท')
     }
     
@@ -200,6 +208,9 @@ export default function FinancialAnalysis({ profile, totalIncome }: FinancialAna
             <p className={`text-sm font-bold ${savingRatio >= 10 ? 'text-green-600' : 'text-red-600'}`}>
               {savingRatio.toFixed(1)}%
             </p>
+            {savingRatioOverflow && (
+              <p className="text-xs text-amber-600 mt-0.5">คำนวณจากรายการจริงเกิน 100% — ตรวจสอบรายการออม/ลงทุน</p>
+            )}
             <p className="text-xs text-gray-500 mt-1">เกณฑ์ที่ดี ≥ 10%</p>
           </div>
           <div className="bg-white p-3 rounded">
