@@ -49,12 +49,15 @@ export const CATEGORY_TO_ICON_KEY: Record<string, IconKey> = {
   อาหาร: "food",
   ค่าเดินทาง: "transit",
   "ที่พัก/ค่าเช่า": "home",
+  "ที่พัก / ค่าเช่า": "home",
+  ที่พักค่าเช่า: "home",
   สาธารณูปโภค: "utilities",
   สุขภาพ: "health",
   บันเทิง: "entertainment",
   การศึกษา: "education",
   ช้อปปิ้ง: "shopping",
   "โทรศัพท์/อินเทอร์เน็ต": "phone",
+  "โทรศัพท์ / อินเทอร์เน็ต": "phone",
   ผ่อนชำระหนี้: "debt",
   ลงทุน: "investment",
   ออมเงิน: "savings",
@@ -91,9 +94,12 @@ function IconSvg({ d }: { d: string }) {
   return (
     <svg
       className={ICON_SIZE}
+      width="20"
+      height="20"
       fill="none"
       stroke="currentColor"
       viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg"
     >
       <path
         strokeLinecap="round"
@@ -175,7 +181,7 @@ export function getCategoryIcon(
       );
     case "transit":
       return (
-        <IconSvg d="M7 18c-1.7 0-3-1.3-3-3V7c0-2.8 2.2-5 5-5h6c2.8 0 5 2.2 5 5v8c0 1.7-1.3 3-3 3M7 18h10M8 18l-2 2M16 18l2 2M7 8h10M8 14h.01M16 14h.01" />
+        <IconSvg d="M8 7h12m0 0l-4-4m4 4l-4-4m0 6H4m0 0l4 4m-4-4l4-4" />
       );
     case "home":
       return (

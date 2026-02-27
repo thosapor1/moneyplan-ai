@@ -28,10 +28,7 @@ import {
   computeForecastEnd,
 } from "@/src/domain/forecast/forecast";
 import RecentBigExpenses from "./components/RecentBigExpenses";
-import {
-  getCategoryIcon,
-  getCategoryIconStyle,
-} from "@/src/presentation/category-icons/category-icons";
+import CategoryIcon from "@/components/CategoryIcon";
 import {
   format,
   startOfMonth,
@@ -1375,18 +1372,7 @@ export default function DashboardPage() {
                   className="px-4 py-3 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3 flex-1">
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                        transaction.type === "income"
-                          ? "bg-green-100 text-green-800"
-                          : ""
-                      } ${transaction.type === "expense" ? getCategoryIconStyle(transaction.category || "").bg + " " + getCategoryIconStyle(transaction.category || "").icon : ""}`}
-                    >
-                      {getCategoryIcon(
-                        transaction.category || "",
-                        transaction.type,
-                      )}
-                    </div>
+                    <CategoryIcon category={transaction.category || ""} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 truncate">
                         {transaction.category || "-"}

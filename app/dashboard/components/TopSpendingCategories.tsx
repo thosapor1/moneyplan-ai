@@ -1,6 +1,7 @@
 'use client'
 
-import { getCategoryIcon, getCategoryIconStyle } from '@/lib/category-icons'
+import CategoryIcon from '@/components/CategoryIcon'
+import { getCategoryIconStyle } from '@/lib/category-icons'
 import type { CategorySummary } from '@/lib/finance'
 
 type Props = {
@@ -39,7 +40,7 @@ export default function TopSpendingCategories({ categories, totalExpense, catego
               <div className="flex justify-between items-center text-sm">
                 <span className="text-gray-700 truncate pr-2 flex items-center gap-1.5">
                   <span className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${getCategoryIconStyle(cat.category).bg} ${getCategoryIconStyle(cat.category).icon}`} title={cat.category}>
-                    {getCategoryIcon(cat.category)}
+                    <CategoryIcon category={cat.category} iconOnly />
                   </span>
                   {cat.category}
                 </span>
@@ -61,7 +62,7 @@ export default function TopSpendingCategories({ categories, totalExpense, catego
             <div className="flex justify-between text-sm">
                 <span className="text-gray-500 truncate pr-2 flex items-center gap-1.5">
                 <span className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-600">
-                  {getCategoryIcon('อื่นๆ')}
+                  <CategoryIcon category="อื่นๆ" iconOnly />
                 </span>
                 รวมหมวดอื่น
               </span>
