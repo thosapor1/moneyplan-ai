@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase, Profile, fetchCategoryBudgets, saveCategoryBudgets } from '@/lib/supabase'
+import { supabase, Profile, fetchCategoryBudgets, saveCategoryBudgets, fetchDebtItems, insertDebtItem, updateDebtItem, deleteDebtItem, type DebtItemRow } from '@/lib/supabase'
 import { format } from 'date-fns'
 import FinancialAnalysis from '@/components/FinancialAnalysis'
 import BottomNavigation from '@/components/BottomNavigation'
@@ -35,6 +35,8 @@ export default function ProfilePage() {
   const [numericInputs, setNumericInputs] = useState<Partial<Record<keyof Profile, string>>>({})
   // งบรายจ่ายรายเดือนต่อหมวด (จาก DB)
   const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
+  // รายการหนี้แยกประเภท (จาก DB)
+  const [debtItems, setDebtItems] = useState<DebtItemRow[]>([])
 
   // Keep profileRef in sync with profile state
   useEffect(() => {
@@ -99,6 +101,9 @@ export default function ProfilePage() {
       // โหลดงบรายจ่ายรายเดือนต่อหมวดจาก DB
       const budgets = await fetchCategoryBudgets(session.user.id)
       setCategoryBudgetsState(budgets)
+
+      const items = await fetchDebtItems(session.user.id)
+      setDebtItems(items)
     } catch (error) {
       console.error('Error:', error)
     } finally {
@@ -467,6 +472,80 @@ export default function ProfilePage() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* รายการหนี้แยกประเภท */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xl">📉</span>
+              <h3 className="text-base font-bold text-gray-800">รายการหนี้แยกประเภท</h3>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">เพิ่มรายการหนี้ เช่น บัตรเครดิต ผ่อนรถ ผ่อนบ้าน จะได้ใช้ในหน้าเป้าปลดหนี้และคำแนะนำจาก AI</p>
+            <div className="space-y-3">
+              {debtItems.map((item) => (
+                <div key={item.id} className="flex flex-col gap-1 p-3 rounded-xl bg-gray-50 border border-gray-100">
+                  <div className="flex justify-between items-start">
+                    <span className="font-medium text-gray-800">{item.name}</span>
+                    <div className="flex items-center gap-1">
+                      {item.priority === 'high' && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">ควรโปะก่อน</span>
+                      )}
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await deleteDebtItem(item.id)
+                          const { data: { session } } = await supabase.auth.getSession()
+                          if (session) setDebtItems(await fetchDebtItems(session.user.id))
+                        }}
+                        className="p-1 text-red-600 hover:bg-red-50 rounded"
+                        aria-label="ลบ"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>คงเหลือ {Number(item.remaining).toLocaleString('th-TH')} บาท</span>
+                    {item.interest_rate != null && <span>ดอกเบี้ย ~{item.interest_rate}%/ปี</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <form
+              className="mt-4 flex flex-col gap-2"
+              onSubmit={async (e) => {
+                e.preventDefault()
+                const form = e.currentTarget
+                const name = (form.querySelector('[name="debt_name"]') as HTMLInputElement)?.value?.trim()
+                const remaining = parseFloat((form.querySelector('[name="debt_remaining"]') as HTMLInputElement)?.value || '0')
+                const interestRate = (form.querySelector('[name="debt_rate"]') as HTMLInputElement)?.value
+                const priority = (form.querySelector('[name="debt_priority"]') as HTMLSelectElement)?.value as 'high' | 'normal'
+                if (!name || remaining <= 0) return
+                const { data: { session } } = await supabase.auth.getSession()
+                if (!session) return
+                const created = await insertDebtItem(session.user.id, {
+                  name,
+                  remaining,
+                  interest_rate: interestRate ? parseFloat(interestRate) : undefined,
+                  priority: priority === 'high' ? 'high' : 'normal',
+                })
+                if (created) {
+                  setDebtItems(await fetchDebtItems(session.user.id))
+                  form.reset()
+                }
+              }}
+            >
+              <input name="debt_name" type="text" placeholder="ชื่อหนี้ (เช่น บัตรเครดิต A)" className="w-full px-4 py-2 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400" required />
+              <div className="flex gap-2">
+                <input name="debt_remaining" type="number" min="0" step="1" placeholder="ยอดคงเหลือ (บาท)" className="flex-1 px-4 py-2 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400" required />
+                <input name="debt_rate" type="number" min="0" step="0.1" placeholder="ดอกเบี้ย %/ปี" className="w-24 px-4 py-2 border border-gray-200 rounded-xl text-gray-900 placeholder:text-gray-400" />
+              </div>
+              <select name="debt_priority" className="w-full px-4 py-2 border border-gray-200 rounded-xl text-gray-900 bg-white">
+                <option value="normal">ความสำคัญ: ปกติ</option>
+                <option value="high">ควรโปะก่อน</option>
+              </select>
+              <button type="submit" className="py-2 px-4 rounded-xl bg-sky-600 text-white text-sm font-medium hover:bg-sky-700">เพิ่มรายการหนี้</button>
+            </form>
           </div>
 
           {/* ⚙️ App Settings */}

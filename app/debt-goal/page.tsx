@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase, Profile } from '@/lib/supabase'
+import { supabase, Profile, fetchDebtItems } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
+import FormattedAnalysis from '@/components/FormattedAnalysis'
 import { addMonths, format } from 'date-fns'
 
 /** Simple estimate: months to clear = totalDebt / monthlyPayment (no interest) */
@@ -20,15 +21,7 @@ function progressColor(percent: number): string {
   return '#4ade80'
 }
 
-/** Mock debt items when no DB list exists */
-type DebtItem = { name: string; remaining: number; rate?: number; priority?: 'high' | 'normal' }
-const MOCK_DEBTS: DebtItem[] = [
-  { name: 'บัตรเครดิต A', remaining: 45000, rate: 18, priority: 'high' },
-  { name: 'สินเชื่อส่วนบุคคล', remaining: 120000, rate: 12, priority: 'normal' },
-  { name: 'ผ่อนรถ', remaining: 280000, rate: 4.5, priority: 'normal' },
-]
-
-/** Mock monthly remaining trend (last 6 months, descending) */
+/** Monthly remaining trend (last 6 months) from total + monthly payment */
 function mockTrend(totalRemaining: number, monthlyPayment: number): { month: string; remaining: number }[] {
   const n = 6
   const arr: { month: string; remaining: number }[] = []
@@ -45,6 +38,10 @@ export default function DebtGoalPage() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [debtItems, setDebtItems] = useState<{ id: string; name: string; remaining: number; interest_rate?: number; priority?: 'high' | 'normal' }[]>([])
+  const [adviceLoading, setAdviceLoading] = useState(false)
+  const [advice, setAdvice] = useState<string | null>(null)
+  const [adviceError, setAdviceError] = useState<string | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -55,6 +52,8 @@ export default function DebtGoalPage() {
       }
       const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
       if (data) setProfile(data as Profile)
+      const items = await fetchDebtItems(session.user.id)
+      setDebtItems(items)
       setLoading(false)
     }
     load()
@@ -92,9 +91,35 @@ export default function DebtGoalPage() {
         ? 'คุณกำลังทำได้ดี'
         : 'ตามแผนปกติ'
 
-  const debtItems = totalDebt > 0 ? MOCK_DEBTS : []
   const trendData = totalDebt > 0 && monthlyPayment > 0 ? mockTrend(totalDebt, monthlyPayment) : []
   const maxTrend = Math.max(...trendData.map((d) => d.remaining), 1)
+
+  const fetchAdvice = async () => {
+    setAdviceLoading(true)
+    setAdviceError(null)
+    setAdvice(null)
+    try {
+      const res = await fetch('/api/debt-advice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          totalDebt,
+          monthlyPayment,
+          debtItems: debtItems.map((d) => ({ name: d.name, remaining: d.remaining, rate: d.interest_rate, priority: d.priority })),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAdviceError(data.error || 'ขอคำแนะนำไม่สำเร็จ')
+        return
+      }
+      setAdvice(data.advice)
+    } catch (e) {
+      setAdviceError(e instanceof Error ? e.message : 'เกิดข้อผิดพลาด')
+    } finally {
+      setAdviceLoading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -201,33 +226,26 @@ export default function DebtGoalPage() {
           </div>
           {debtItems.length === 0 ? (
             <p className="text-sm text-gray-500 py-4 text-center">
-              ยังไม่มีข้อมูลหนี้ แก้ไขหนี้สินรวมและเงินผ่อนต่อเดือนในหน้าโปรไฟล์
+              ยังไม่มีรายการหนี้แยกประเภท เพิ่มได้ที่หน้า <Link href="/profile" className="text-sky-600 underline">โปรไฟล์ (สุขภาพการเงิน)</Link> ในส่วน &quot;รายการหนี้แยกประเภท&quot;
             </p>
           ) : (
-            <>
-            <p className="text-xs text-gray-500 mb-2">ตัวอย่างรายการ (ข้อมูลจริงจากโปรไฟล์ = ยอดรวมด้านบน)</p>
             <div className="space-y-3">
-              {debtItems.map((item, i) => (
-                <div
-                  key={i}
-                  className="flex flex-col gap-1 p-3 rounded-xl bg-gray-50 border border-gray-100"
-                >
+              {debtItems.map((item) => (
+                <div key={item.id} className="flex flex-col gap-1 p-3 rounded-xl bg-gray-50 border border-gray-100">
                   <div className="flex justify-between items-start">
                     <span className="font-medium text-gray-800">{item.name}</span>
                     {item.priority === 'high' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                        ควรโปะก่อน
-                      </span>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">ควรโปะก่อน</span>
                     )}
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>คงเหลือ {item.remaining.toLocaleString('th-TH')} บาท</span>
-                    {item.rate != null && <span>ดอกเบี้ย ~{item.rate}%/ปี</span>}
+                    <span>คงเหลือ {Number(item.remaining).toLocaleString('th-TH')} บาท</span>
+                    {item.interest_rate != null && <span>ดอกเบี้ย ~{item.interest_rate}%/ปี</span>}
                   </div>
                 </div>
               ))}
+              <p className="text-xs text-gray-500 text-center pt-1">แก้ไขรายการได้ที่หน้า <Link href="/profile" className="text-sky-600 underline">โปรไฟล์</Link></p>
             </div>
-            </>
           )}
         </section>
 
@@ -256,6 +274,35 @@ export default function DebtGoalPage() {
             <p className="text-xs text-gray-500 mt-2 text-center">ยอดคงเหลือแต่ละเดือน (ประมาณ)</p>
           </section>
         )}
+
+        {/* Section 6: AI คำแนะนำการปลดหนี้ */}
+        <section className="bg-white rounded-2xl shadow-sm p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xl">🤖</span>
+            <h2 className="text-sm font-medium text-gray-600">คำแนะนำจาก AI วิธีปลดหนี้</h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-3">
+            ให้ AI วิเคราะห์จากยอดหนี้และเงินผ่อนต่อเดือนของคุณ แล้วแนะนำแนวทางปลดหนี้ที่เหมาะกับคุณ
+          </p>
+          <button
+            type="button"
+            onClick={fetchAdvice}
+            disabled={adviceLoading}
+            className="w-full py-3 px-4 rounded-xl font-medium bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition"
+          >
+            {adviceLoading ? 'กำลังสร้างคำแนะนำ...' : 'ขอคำแนะนำจาก AI'}
+          </button>
+          {adviceError && (
+            <div className="mt-3 p-3 rounded-xl bg-red-50 text-red-700 text-sm">
+              {adviceError}
+            </div>
+          )}
+          {advice && (
+            <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-100 text-gray-800 leading-relaxed">
+              <FormattedAnalysis text={advice} />
+            </div>
+          )}
+        </section>
 
         <div className="h-4" />
       </div>

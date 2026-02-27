@@ -191,6 +191,10 @@ export default function TransactionsPage() {
     spentByCategory,
     VARIABLE_EXPENSE_CATEGORIES
   )
+  const variableRemainingTotal = VARIABLE_EXPENSE_CATEGORIES.reduce(
+    (sum, cat) => sum + (remainingByCategory[cat] ?? 0),
+    0
+  )
   const isTodayInRange = todayStr >= rangeStartStr && todayStr <= rangeEndStr
   const hasAnyVariableBudget = VARIABLE_EXPENSE_CATEGORIES.some((cat) => (categoryBudgets[cat] ?? 0) > 0)
 
@@ -549,12 +553,13 @@ export default function TransactionsPage() {
         <div className="mb-5 bg-white rounded-2xl shadow-sm p-4">
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-600">งบรายจ่ายต่อวัน</p>
-            <p className="text-xs text-gray-500">งบต่อวันจากงบที่เหลือในงวด (เฉพาะหมวดผันแปร)</p>
+            <p className="text-xs text-gray-500">งบต่อวันจากงบที่เหลือในงวด (เฉพาะหมวดผันแปร) — <strong>ไม่ใช่ค่าที่ตั้งตายตัว</strong> คำนวณจาก งบที่เหลือ ÷ จำนวนวันที่เหลือ</p>
             {!hasAnyVariableBudget ? (
               <p className="text-sm text-amber-600 py-2">
                 กำหนดงบรายเดือนต่อหมวดผันแปรในหน้าโปรไฟล์
               </p>
             ) : (
+              <>
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-gray-50 rounded-xl p-3">
                   <p className="text-xs text-gray-500">งบวันนี้</p>
@@ -567,6 +572,7 @@ export default function TransactionsPage() {
                   <p className="text-xs text-gray-500">ใช้ไปวันนี้</p>
                   <p className="text-lg font-bold text-amber-700">{expenseToday.toLocaleString('th-TH')}</p>
                   <p className="text-xs text-gray-400">บาท</p>
+                  <p className="text-xs text-gray-500 mt-0.5">(เฉพาะรายการวันที่วันนี้)</p>
                 </div>
                 <div className="bg-emerald-50 rounded-xl p-3">
                   <p className="text-xs text-gray-500">คงเหลือ</p>
@@ -576,6 +582,15 @@ export default function TransactionsPage() {
                   <p className="text-xs text-gray-400">บาท</p>
                 </div>
               </div>
+              <p className="text-xs text-gray-500 mt-2">
+                ที่มา: งบที่เหลือ (หมวดผันแปร) {Math.round(variableRemainingTotal).toLocaleString('th-TH')} บาท ÷ {remainingDays} วันที่เหลือ = {Math.round(dailyBudget).toLocaleString('th-TH')} บาท/วัน
+              </p>
+              {expenseToday > 0 && dailyBudget > 0 && expenseToday > dailyBudget * 5 && (
+                <p className="text-xs text-amber-700 bg-amber-50 rounded-lg p-2 mt-2">
+                  💡 ตัวเลข &quot;ใช้ไปวันนี้&quot; สูงมากเทียบกับงบต่อวัน ถ้าไม่ได้ใช้จ่ายมากขนาดนี้ในวันเดียว ลองตรวจสอบว่ารายการที่บันทึกวันที่วันนี้ถูกต้องหรือไม่
+                </p>
+              )}
+              </>
             )}
           </div>
         </div>
