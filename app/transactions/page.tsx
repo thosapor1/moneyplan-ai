@@ -58,7 +58,7 @@ export default function TransactionsPage() {
       setCategoryBudgetsState(budgets)
       const { data: profileData } = await supabase
         .from('profiles').select('month_end_day').eq('id', session.user.id).single()
-      setMonthEndDayState(profileData?.month_end_day ?? 0)
+      setMonthEndDayState(0)
       setProfileLoaded(true)
     } catch (error) {
       console.error('Error loading profile:', error)
@@ -127,7 +127,7 @@ export default function TransactionsPage() {
         setCategoryBudgetsState(budgets)
         const { data: profileData } = await supabase
           .from('profiles').select('month_end_day').eq('id', session.user.id).single()
-        const newMonthEndDay = profileData?.month_end_day ?? 0
+        const newMonthEndDay = 0
         setMonthEndDayState(newMonthEndDay)
         loadMonthTransactionsRef.current(selectedMonthRef.current, newMonthEndDay)
       }

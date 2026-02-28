@@ -165,12 +165,12 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  const monthEndDay = profile?.month_end_day ?? 0;
+  const monthEndDay = 0
 
   useEffect(() => {
     if (!user) return;
     if (!initialMonthSetRef.current && profile != null) {
-      const activeMonth = getActivePeriodMonth(new Date(), profile.month_end_day ?? 0);
+      const activeMonth = getActivePeriodMonth(new Date(), 0);
       setSelectedMonth(activeMonth);
       initialMonthSetRef.current = true;
       return;

@@ -61,7 +61,7 @@ export default function ProfilePage() {
       }
 
       const now = new Date()
-      const monthEndDay = data?.month_end_day ?? 0
+      const monthEndDay = 0
       const { start, end } = getActiveMonthRange(now, monthEndDay)
       const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions').select('*').eq('user_id', session.user.id)
@@ -465,24 +465,7 @@ export default function ProfilePage() {
         <h3 className="font-semibold text-foreground mb-3">ตั้งค่าแอป</h3>
         <Card className="shadow-card border-0">
           <CardContent className="p-4 space-y-4">
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">วันสิ้นเดือน</label>
-              <select
-                value={profile.month_end_day ?? 0}
-                onChange={async (e) => {
-                  const v = Number(e.target.value)
-                  setProfile((prev) => ({ ...prev, month_end_day: v }))
-                  const { data: { session } } = await supabase.auth.getSession()
-                  if (session) await supabase.from('profiles').update({ month_end_day: v, updated_at: new Date().toISOString() }).eq('id', session.user.id)
-                }}
-                className="w-full px-4 py-2 border border-border rounded-xl text-foreground text-sm bg-card"
-              >
-                <option value={0}>ตามปฏิทิน</option>
-                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
-                  <option key={d} value={d}>วันที่ {d}</option>
-                ))}
-              </select>
-            </div>
+            <p className="text-xs text-muted-foreground">งวดรายเดือนใช้ตามปฏิทิน (1 ถึง สิ้นเดือน)</p>
             <div>
               <label className="block text-xs text-muted-foreground mb-2">งบรายจ่ายรายเดือนต่อหมวด</label>
               <Card className="shadow-card border-0">
