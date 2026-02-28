@@ -19,9 +19,7 @@
  */
 
 export const FIXED_EXPENSE_CATEGORIES = [
-  'ที่พัก/ค่าเช่า',
-  'สาธารณูปโภค',
-  'โทรศัพท์/อินเทอร์เน็ต',
+  'บิล/ค่าใช้จ่าย',
   'ผ่อนชำระหนี้',
   'ออมเงิน',
   'ลงทุน',
@@ -29,11 +27,11 @@ export const FIXED_EXPENSE_CATEGORIES = [
 
 export const VARIABLE_EXPENSE_CATEGORIES = [
   'อาหาร',
-  'ค่าเดินทาง',
+  'เดินทาง',
+  'ช้อปปิ้ง',
   'สุขภาพ',
   'บันเทิง',
   'การศึกษา',
-  'ช้อปปิ้ง',
   'อื่นๆ',
 ] as const
 
@@ -42,6 +40,22 @@ export type VariableCategory = (typeof VARIABLE_EXPENSE_CATEGORIES)[number]
 
 const FIXED_SET = new Set<string>(FIXED_EXPENSE_CATEGORIES)
 const VARIABLE_SET = new Set<string>(VARIABLE_EXPENSE_CATEGORIES)
+
+/**
+ * Maps legacy category names to current canonical names.
+ * Keeps forecast module in sync with finance module aliases.
+ */
+const CATEGORY_ALIASES: Record<string, string> = {
+  'ค่าเดินทาง': 'เดินทาง',
+  'ที่พัก/ค่าเช่า': 'บิล/ค่าใช้จ่าย',
+  'สาธารณูปโภค': 'บิล/ค่าใช้จ่าย',
+  'โทรศัพท์/อินเทอร์เน็ต': 'บิล/ค่าใช้จ่าย',
+}
+
+function normalizeCat(cat: string): string {
+  const trimmed = (cat ?? '').trim()
+  return CATEGORY_ALIASES[trimmed] ?? trimmed
+}
 
 /**
  * Minimal transaction shape required by this domain module.
@@ -107,7 +121,7 @@ function parseDateStr(s: string): Date {
  */
 export function computeVariableDailyRate(transactions: TransactionLike[], today: Date): number {
   const expenseOnly = transactions.filter(
-    (t) => t.type === 'expense' && t.category != null && VARIABLE_SET.has(t.category.trim())
+    (t) => t.type === 'expense' && t.category != null && VARIABLE_SET.has(normalizeCat(t.category))
   )
 
   const end = toDateOnly(today)
@@ -157,7 +171,7 @@ export function computePlannedRemaining(
     const historical = transactions.filter(
       (t) =>
         t.type === 'expense' &&
-        (t.category?.trim() ?? '') === cat &&
+        normalizeCat(t.category ?? '') === cat &&
         t.date >= threeMonthsAgoStr &&
         t.date <= todayStr
     )
@@ -173,7 +187,7 @@ export function computePlannedRemaining(
     const paidThisPeriod = transactions.some(
       (t) =>
         t.type === 'expense' &&
-        (t.category?.trim() ?? '') === cat &&
+        normalizeCat(t.category ?? '') === cat &&
         t.date >= periodStartStr &&
         t.date <= todayStr
     )

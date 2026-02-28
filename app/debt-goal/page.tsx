@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { supabase, Profile, fetchDebtItems } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
 import FormattedAnalysis from '@/components/FormattedAnalysis'
+import { Card, CardContent } from '@/components/ui/card'
 import { addMonths, format } from 'date-fns'
 
 /** Simple estimate: months to clear = totalDebt / monthlyPayment (no interest) */
@@ -61,8 +62,8 @@ export default function DebtGoalPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 pb-16">
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-emerald-500 border-t-transparent" />
+      <div className="min-h-screen flex items-center justify-center bg-background pb-16">
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
       </div>
     )
   }
@@ -122,29 +123,42 @@ export default function DebtGoalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
-          <Link href="/dashboard" className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+    <div className="min-h-screen bg-background pb-20">
+      <div className="bg-background border-b border-border sticky top-0 z-10">
+        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <Link href="/dashboard" className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors shrink-0">
+              <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </Link>
+            <h1 className="text-lg font-semibold text-foreground truncate">เป้าปลดหนี้</h1>
+          </div>
+          <button
+            type="button"
+            onClick={async () => { await supabase.auth.signOut(); router.push('/auth/login'); router.refresh() }}
+            className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors shrink-0"
+            title="ออกจากระบบ"
+          >
+            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
             </svg>
-          </Link>
-          <h1 className="text-lg font-semibold text-gray-800">เป้าปลดหนี้</h1>
+          </button>
         </div>
       </div>
 
-      <div className="max-w-md mx-auto px-4 py-5 space-y-6">
+      <div className="max-w-lg mx-auto px-4 py-5 space-y-6">
         {/* Section 1: Hero Summary */}
-        <section className="bg-white rounded-2xl shadow-sm p-6">
+        <Card className="shadow-card border-0">
+          <CardContent className="p-6">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">🎯</span>
-            <h2 className="text-sm font-medium text-gray-600">ภาพรวมหนี้</h2>
+            <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ภาพรวมหนี้</h2>
           </div>
           <div className="flex flex-col items-center">
             <div className="relative w-40 h-40">
               <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="42" fill="none" stroke="#f3f4f6" strokeWidth="8" />
+                <circle cx="50" cy="50" r="42" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
                 <circle
                   cx="50"
                   cy="50"
@@ -157,152 +171,165 @@ export default function DebtGoalPage() {
                 />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold text-gray-800">{progressPercent}%</span>
-                <span className="text-xs text-gray-500">ปลดแล้ว</span>
+                <span className="text-2xl font-bold text-foreground">{progressPercent}%</span>
+                <span className="text-xs text-muted-foreground">ปลดแล้ว</span>
               </div>
             </div>
-            <p className="text-2xl font-bold text-gray-900 mt-4">
-              {totalDebt.toLocaleString('th-TH')} <span className="text-lg font-medium text-gray-500">บาท</span>
+            <p className="text-2xl font-bold text-foreground mt-4">
+              {totalDebt.toLocaleString('th-TH')} <span className="text-lg font-medium text-muted-foreground">บาท</span>
             </p>
-            <p className="text-sm text-gray-500">ยอดหนี้คงเหลือ</p>
+            <p className="text-sm text-muted-foreground">ยอดหนี้คงเหลือ</p>
             {payoffDate && monthlyPayment > 0 && (
               <>
-                <p className="text-emerald-600 font-semibold mt-2">
+                <p className="text-success font-semibold mt-2">
                   คาดว่าจะหมดหนี้ {format(payoffDate, 'MMM yyyy')}
                 </p>
-                <p className="text-xs text-gray-500">ประมาณอีก {monthsBase} เดือน</p>
+                <p className="text-xs text-muted-foreground">ประมาณอีก {monthsBase} เดือน</p>
               </>
             )}
           </div>
-        </section>
+        </CardContent>
+        </Card>
 
         {/* Section 2: Status Card */}
-        <section className="bg-white rounded-2xl shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-xl">⏳</span>
-            <h2 className="text-sm font-medium text-gray-600">สถานะเดือนนี้</h2>
-          </div>
-          <p className="text-lg font-semibold text-gray-800">{statusMessage}</p>
-          {monthlyPayment > 0 && (
-            <p className="text-sm text-gray-500 mt-1">
-              จ่ายเดือนละ {monthlyPayment.toLocaleString('th-TH')} บาท
-            </p>
-          )}
-        </section>
+        <Card className="shadow-card border-0">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">สถานะเดือนนี้</h2>
+            </div>
+            <p className="text-lg font-semibold text-foreground">{statusMessage}</p>
+            {monthlyPayment > 0 && (
+              <p className="text-sm text-muted-foreground mt-1">
+                จ่ายเดือนละ {monthlyPayment.toLocaleString('th-TH')} บาท
+              </p>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Section 3: Motivation Simulation */}
         {monthlyPayment > 0 && totalDebt > 0 && (
-          <section className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">💰</span>
-              <h2 className="text-sm font-medium text-gray-600">ถ้าโปะเพิ่มทุกเดือน...</h2>
-            </div>
-            <div className="space-y-2">
-              {[500, 1000, 2000].map((extra) => {
-                const newMonthly = monthlyPayment + extra
-                const monthsNew = monthsToClear(totalDebt, newMonthly)
-                const earlier = Math.max(0, monthsBase - monthsNew)
-                return (
-                  <div
-                    key={extra}
-                    className="flex justify-between items-center py-2 px-3 rounded-xl bg-gray-50"
-                  >
-                    <span className="text-gray-700">+{extra.toLocaleString('th-TH')} บาท/เดือน</span>
-                    <span className="text-emerald-600 font-medium">
-                      หมดเร็วขึ้น {earlier} เดือน
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
+          <Card className="shadow-card border-0">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ถ้าโปะเพิ่มทุกเดือน...</h2>
+              </div>
+              <div className="space-y-2">
+                {[500, 1000, 2000].map((extra) => {
+                  const newMonthly = monthlyPayment + extra
+                  const monthsNew = monthsToClear(totalDebt, newMonthly)
+                  const earlier = Math.max(0, monthsBase - monthsNew)
+                  return (
+                    <div
+                      key={extra}
+                      className="flex justify-between items-center py-2 px-3 rounded-xl bg-secondary"
+                    >
+                      <span className="text-foreground">+{extra.toLocaleString('th-TH')} บาท/เดือน</span>
+                      <span className="text-success font-medium">
+                        หมดเร็วขึ้น {earlier} เดือน
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Section 4: Debt Breakdown */}
-        <section className="bg-white rounded-2xl shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xl">📉</span>
-            <h2 className="text-sm font-medium text-gray-600">รายการหนี้</h2>
-          </div>
-          {debtItems.length === 0 ? (
-            <p className="text-sm text-gray-500 py-4 text-center">
-              ยังไม่มีรายการหนี้แยกประเภท เพิ่มได้ที่หน้า <Link href="/profile" className="text-sky-600 underline">โปรไฟล์ (สุขภาพการเงิน)</Link> ในส่วน &quot;รายการหนี้แยกประเภท&quot;
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {debtItems.map((item) => (
-                <div key={item.id} className="flex flex-col gap-1 p-3 rounded-xl bg-gray-50 border border-gray-100">
-                  <div className="flex justify-between items-start">
-                    <span className="font-medium text-gray-800">{item.name}</span>
-                    {item.priority === 'high' && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">ควรโปะก่อน</span>
-                    )}
-                  </div>
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span>คงเหลือ {Number(item.remaining).toLocaleString('th-TH')} บาท</span>
-                    {item.interest_rate != null && <span>ดอกเบี้ย ~{item.interest_rate}%/ปี</span>}
-                  </div>
-                </div>
-              ))}
-              <p className="text-xs text-gray-500 text-center pt-1">แก้ไขรายการได้ที่หน้า <Link href="/profile" className="text-sky-600 underline">โปรไฟล์</Link></p>
+        <Card className="shadow-card border-0">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">รายการหนี้</h2>
             </div>
-          )}
-        </section>
+            {debtItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                ยังไม่มีรายการหนี้แยกประเภท เพิ่มได้ที่หน้า <Link href="/profile" className="text-primary underline">โปรไฟล์ (สุขภาพการเงิน)</Link> ในส่วน &quot;รายการหนี้แยกประเภท&quot;
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {debtItems.map((item) => (
+                  <div key={item.id} className="flex flex-col gap-1 p-3 rounded-xl bg-secondary border border-border">
+                    <div className="flex justify-between items-start">
+                      <span className="font-medium text-foreground">{item.name}</span>
+                      {item.priority === 'high' && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-warning/20 text-warning">ควรโปะก่อน</span>
+                      )}
+                    </div>
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>คงเหลือ {Number(item.remaining).toLocaleString('th-TH')} บาท</span>
+                      {item.interest_rate != null && <span>ดอกเบี้ย ~{item.interest_rate}%/ปี</span>}
+                    </div>
+                  </div>
+                ))}
+                <p className="text-xs text-muted-foreground text-center pt-1">แก้ไขรายการได้ที่หน้า <Link href="/profile" className="text-primary underline">โปรไฟล์</Link></p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Section 5: Progress Over Time */}
         {trendData.length > 0 && (
-          <section className="bg-white rounded-2xl shadow-sm p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-xl">📊</span>
-              <h2 className="text-sm font-medium text-gray-600">แนวโน้มยอดหนี้</h2>
-            </div>
-            <div className="h-40 flex items-end gap-1">
-              {trendData.map((d, i) => (
-                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                  <div
-                    className="w-full rounded-t bg-emerald-200 min-h-[4px] transition-all"
-                    style={{
-                      height: `${(d.remaining / maxTrend) * 120}px`,
-                    }}
-                  />
-                  <span className="text-xs text-gray-500 truncate w-full text-center">
-                    {d.month}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-gray-500 mt-2 text-center">ยอดคงเหลือแต่ละเดือน (ประมาณ)</p>
-          </section>
+          <Card className="shadow-card border-0">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">แนวโน้มยอดหนี้</h2>
+              </div>
+              <div className="h-40 flex items-end gap-1">
+                {trendData.map((d, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <div
+                      className="w-full rounded-t bg-success/30 min-h-[4px] transition-all"
+                      style={{
+                        height: `${(d.remaining / maxTrend) * 120}px`,
+                      }}
+                    />
+                    <span className="text-xs text-muted-foreground truncate w-full text-center">
+                      {d.month}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 text-center">ยอดคงเหลือแต่ละเดือน (ประมาณ)</p>
+            </CardContent>
+          </Card>
         )}
 
         {/* Section 6: AI คำแนะนำการปลดหนี้ */}
-        <section className="bg-white rounded-2xl shadow-sm p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xl">🤖</span>
-            <h2 className="text-sm font-medium text-gray-600">คำแนะนำจาก AI วิธีปลดหนี้</h2>
-          </div>
-          <p className="text-sm text-gray-500 mb-3">
-            ให้ AI วิเคราะห์จากยอดหนี้และเงินผ่อนต่อเดือนของคุณ แล้วแนะนำแนวทางปลดหนี้ที่เหมาะกับคุณ
-          </p>
-          <button
-            type="button"
-            onClick={fetchAdvice}
-            disabled={adviceLoading}
-            className="w-full py-3 px-4 rounded-xl font-medium bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition"
-          >
-            {adviceLoading ? 'กำลังสร้างคำแนะนำ...' : 'ขอคำแนะนำจาก AI'}
-          </button>
-          {adviceError && (
-            <div className="mt-3 p-3 rounded-xl bg-red-50 text-red-700 text-sm">
-              {adviceError}
+        <Card className="shadow-card border-0 overflow-hidden gradient-hero text-primary-foreground">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 rounded-lg bg-primary-foreground/20 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+              </div>
+              <h2 className="text-sm font-semibold text-primary-foreground">คำแนะนำจาก AI วิธีปลดหนี้</h2>
             </div>
-          )}
-          {advice && (
-            <div className="mt-4 p-4 rounded-xl bg-gray-50 border border-gray-100 text-gray-800 leading-relaxed">
-              <FormattedAnalysis text={advice} />
-            </div>
-          )}
-        </section>
+            <p className="text-sm text-primary-foreground/90 mb-3">
+              ให้ AI วิเคราะห์จากยอดหนี้และเงินผ่อนต่อเดือนของคุณ แล้วแนะนำแนวทางปลดหนี้ที่เหมาะกับคุณ
+            </p>
+            <button
+              type="button"
+              onClick={fetchAdvice}
+              disabled={adviceLoading}
+              className="w-full py-3 px-4 rounded-xl font-semibold bg-primary-foreground text-primary disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+            >
+              {adviceLoading ? 'กำลังสร้างคำแนะนำ...' : 'ขอคำแนะนำจาก AI'}
+            </button>
+            {adviceError && (
+              <div className="mt-3 p-3 rounded-xl bg-danger/20 border border-danger/50 text-danger text-sm">
+                {adviceError}
+              </div>
+            )}
+            {advice && (
+              <div className="mt-4 p-4 rounded-xl bg-background/20 border border-primary-foreground/20 text-primary-foreground leading-relaxed">
+                <FormattedAnalysis text={advice} />
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <div className="h-4" />
       </div>

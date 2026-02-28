@@ -25,18 +25,23 @@ describe('getCategoryIconKey', () => {
     expect(getCategoryIconKey('ไม่ระบุหมวด')).toBe('fallback')
   })
 
-  it('maps all required expense categories to correct keys', () => {
-    expect(getCategoryIconKey('ค่าเดินทาง')).toBe('transit')
-    expect(getCategoryIconKey('ที่พัก/ค่าเช่า')).toBe('home')
-    expect(getCategoryIconKey('สาธารณูปโภค')).toBe('utilities')
+  it('maps current expense categories to correct keys', () => {
+    expect(getCategoryIconKey('เดินทาง')).toBe('transit')
+    expect(getCategoryIconKey('บิล/ค่าใช้จ่าย')).toBe('utilities')
     expect(getCategoryIconKey('สุขภาพ')).toBe('health')
     expect(getCategoryIconKey('บันเทิง')).toBe('entertainment')
     expect(getCategoryIconKey('ช้อปปิ้ง')).toBe('shopping')
-    expect(getCategoryIconKey('โทรศัพท์/อินเทอร์เน็ต')).toBe('phone')
     expect(getCategoryIconKey('ผ่อนชำระหนี้')).toBe('debt')
     expect(getCategoryIconKey('ลงทุน')).toBe('investment')
     expect(getCategoryIconKey('ออมเงิน')).toBe('savings')
     expect(getCategoryIconKey('อื่นๆ')).toBe('other')
+  })
+
+  it('legacy category names still resolve (backward compat)', () => {
+    expect(getCategoryIconKey('ค่าเดินทาง')).toBe('transit')
+    expect(getCategoryIconKey('ที่พัก/ค่าเช่า')).toBe('home')
+    expect(getCategoryIconKey('สาธารณูปโภค')).toBe('utilities')
+    expect(getCategoryIconKey('โทรศัพท์/อินเทอร์เน็ต')).toBe('phone')
   })
 
   it('maps income categories correctly', () => {
@@ -46,18 +51,18 @@ describe('getCategoryIconKey', () => {
 })
 
 describe('getCategoryIconStyle', () => {
-  it('returns bg and icon (fg) for known category', () => {
+  it('returns bg, icon, and emoji for known category', () => {
     const style = getCategoryIconStyle('อาหาร')
     expect(style).toHaveProperty('bg')
     expect(style).toHaveProperty('icon')
-    expect(style.bg).toBe('bg-amber-100')
-    expect(style.icon).toBe('text-amber-800')
+    expect(style).toHaveProperty('emoji')
+    expect(style.emoji).toBe('🍜')
   })
 
   it('returns fallback style for unknown category', () => {
     const style = getCategoryIconStyle('unknown')
     expect(style.bg).toBe('bg-gray-100')
-    expect(style.icon).toBe('text-gray-700')
+    expect(style.emoji).toBe('📌')
   })
 })
 

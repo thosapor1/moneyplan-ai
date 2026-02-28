@@ -62,10 +62,11 @@ export function getDaysInMonth(month: Date, customMonthEndDay: number): number {
  *
  * - customMonthEndDay = 0 => calendar month: [1st .. last day]
  * - customMonthEndDay = N (1..31) =>
- *   range is [(N+1) of previous month .. N of this month] (inclusive), clamped to month lengths.
- *   So each day belongs to exactly one period (no double-counting: salary on the 27th counts in one period only).
+ *   range is [N of previous month .. (N-1) of this month] (inclusive), clamped to month lengths.
+ *   Day N starts the new period; day N-1 ends it (N to N-1 format).
+ *   Each day belongs to exactly one period.
  *
- * Example: endDay=27 for Feb 2026 => start=Jan 28, end=Feb 27.
+ * Example: endDay=27 for Feb 2026 => start=Jan 27, end=Feb 26.
  */
 export function getMonthRange(month: Date, customMonthEndDay: number): { start: Date; end: Date } {
   if (customMonthEndDay <= 0) {
@@ -75,17 +76,16 @@ export function getMonthRange(month: Date, customMonthEndDay: number): { start: 
     }
   }
 
-  const lastDay = getEffectiveLastDayOfMonth(month, customMonthEndDay)
-  const end = new Date(month.getFullYear(), month.getMonth(), lastDay)
+  // Start: day N of previous month, clamped to last day of prev month
+  const prevMonthLastDay = new Date(month.getFullYear(), month.getMonth(), 0).getDate()
+  const startDay = Math.min(customMonthEndDay, prevMonthLastDay)
+  const start = new Date(month.getFullYear(), month.getMonth() - 1, startDay)
 
-  const prevMonthCalendarLast = new Date(month.getFullYear(), month.getMonth(), 0).getDate()
-  const startDay = customMonthEndDay + 1
-  let start: Date
-  if (startDay > prevMonthCalendarLast) {
-    start = new Date(month.getFullYear(), month.getMonth(), 1)
-  } else {
-    start = new Date(month.getFullYear(), month.getMonth() - 1, startDay)
-  }
+  // End: day N-1 of current month, clamped to last day of current month.
+  // When customMonthEndDay=1, endDay=0 and JS resolves day=0 as last day of previous month.
+  const currentMonthLastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  const endDay = Math.min(customMonthEndDay - 1, currentMonthLastDay)
+  const end = new Date(month.getFullYear(), month.getMonth(), endDay)
 
   return { start, end }
 }
@@ -177,8 +177,26 @@ export function getTodayExpense(transactions: TransactionLike[], todayStr: strin
 }
 
 /**
+ * Maps legacy category names (from older DB records) to current canonical names.
+ * This ensures budget lookups match even when old transactions exist.
+ */
+const CATEGORY_ALIASES: Record<string, string> = {
+  'ค่าเดินทาง': 'เดินทาง',
+  'ที่พัก/ค่าเช่า': 'บิล/ค่าใช้จ่าย',
+  'สาธารณูปโภค': 'บิล/ค่าใช้จ่าย',
+  'โทรศัพท์/อินเทอร์เน็ต': 'บิล/ค่าใช้จ่าย',
+}
+
+/** Normalize a category name: resolve legacy aliases to current canonical name. */
+export function normalizeCategoryName(category: string): string {
+  const trimmed = (category ?? '').trim()
+  return CATEGORY_ALIASES[trimmed] ?? trimmed
+}
+
+/**
  * Sum of expenses per category within range (inclusive),
  * using date strings (YYYY-MM-DD) which are lexicographically sortable.
+ * Normalizes legacy category names to current canonical names so budget matching works.
  */
 export function computeSpentByCategory(transactions: TransactionLike[], range: DateRange): Record<string, number> {
   const startStr = formatDate(range.start)
@@ -195,7 +213,7 @@ export function computeSpentByCategory(transactions: TransactionLike[], range: D
         (t.category ?? '').trim() !== ''
     )
     .forEach((t) => {
-      const cat = (t.category ?? '').trim()
+      const cat = normalizeCategoryName(t.category ?? '')
       out[cat] = (out[cat] ?? 0) + Number(t.amount)
     })
 
@@ -289,7 +307,7 @@ export function getTopExpenseCategories(transactions: TransactionLike[], limit: 
   const byCategory = new Map<string, number>()
   expenseOnly.forEach((t) => {
     const raw = t.category?.trim()
-    const cat = raw === '' || raw === undefined ? 'ไม่ระบุหมวด' : raw
+    const cat = raw === '' || raw === undefined ? 'ไม่ระบุหมวด' : normalizeCategoryName(raw)
     byCategory.set(cat, (byCategory.get(cat) || 0) + Number(t.amount))
   })
 
@@ -309,7 +327,7 @@ export function getRecentBigExpenses(
     .filter((t) => t.type === 'expense')
     .map((t) => ({
       date: t.date,
-      category: t.category?.trim() || 'ไม่ระบุหมวด',
+      category: normalizeCategoryName(t.category?.trim() || '') || 'ไม่ระบุหมวด',
       amount: Number(t.amount),
     }))
     .sort((a, b) => b.amount - a.amount)

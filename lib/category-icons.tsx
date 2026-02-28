@@ -18,6 +18,7 @@ export {
   CATEGORY_TO_ICON_KEY,
   CATEGORY_STYLE,
   getCategoryIcon,
+  getCategoryEmoji,
   getCategoryIconKey,
   getCategoryIconStyle,
   type IconKey,

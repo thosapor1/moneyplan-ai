@@ -3,9 +3,9 @@
  *
  * Single source of truth for how "a month" is interpreted in the app:
  * - monthEndDay = 0  -> calendar month (1..last day)
- * - monthEndDay = N  -> billing period ends on day N of some month.
- *   The period is [(N+1) of previous month .. N of end month] (inclusive),
- *   so each day belongs to exactly one period (e.g. salary on the 27th counts once).
+ * - monthEndDay = N  -> billing period starts on day N (N-to-N-1 format).
+ *   The period is [N of start month .. (N-1) of end month] (inclusive),
+ *   so each day belongs to exactly one period (e.g. day N starts a new period).
  *   Clamped to month length when needed (e.g. Feb 30 -> Feb 28/29).
  *
  * This module is pure (no I/O, no browser APIs) and safe for unit tests.
@@ -30,11 +30,13 @@ function diffDaysInclusive(from: Date, to: Date): number {
 
 /**
  * Returns the month (as first day) of the period END that contains `asOf`.
+ * Periods follow N-to-N-1 format: start on day N, end on day N-1 of the following month.
  *
  * Examples:
- * - monthEndDay = 0, asOf = 2026-01-15 -> 2026-01-01
- * - monthEndDay = 27, asOf = 2026-01-15 -> period ends 2026-01-27 -> 2026-01-01
- * - monthEndDay = 27, asOf = 2026-01-31 -> period ends 2026-02-27 -> 2026-02-01
+ * - monthEndDay = 0, asOf = 2026-01-15 -> 2026-01-01 (calendar month)
+ * - monthEndDay = 27, asOf = 2026-01-15 -> period Jan 27-Dec 27 .. Jan 26 -> 2026-01-01
+ * - monthEndDay = 27, asOf = 2026-01-27 -> period starts Jan 27, ends Feb 26 -> 2026-02-01
+ * - monthEndDay = 27, asOf = 2026-01-31 -> period Jan 27..Feb 26 -> 2026-02-01
  */
 export function getActivePeriodMonth(asOf: Date, monthEndDay: number): Date {
   if (monthEndDay <= 0) {
@@ -42,11 +44,12 @@ export function getActivePeriodMonth(asOf: Date, monthEndDay: number): Date {
   }
 
   const day = asOf.getDate()
-  if (day <= monthEndDay) {
+  if (day < monthEndDay) {
+    // Before day N: still in period that started last month on day N, ending this month on day N-1
     return new Date(asOf.getFullYear(), asOf.getMonth(), 1)
   }
 
-  // Days after the endDay belong to the period that ends next month.
+  // On or after day N: in period that started today/earlier (day N), ending next month on day N-1
   return new Date(asOf.getFullYear(), asOf.getMonth() + 1, 1)
 }
 

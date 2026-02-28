@@ -3,21 +3,25 @@
 import CategoryIcon from '@/components/CategoryIcon'
 import { getCategoryIconStyle } from '@/lib/category-icons'
 import type { CategorySummary } from '@/lib/finance'
+import { Card, CardContent } from '@/components/ui/card'
 
 type Props = {
   categories: CategorySummary[]
   totalExpense: number
-  /** Optional: category budget (บาท) to highlight over-budget in soft red */
   categoryBudgets?: Record<string, number>
 }
 
 export default function TopSpendingCategories({ categories, totalExpense, categoryBudgets }: Props) {
   if (categories.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-sm p-4">
-        <h3 className="text-sm font-medium text-gray-600 mb-2">หมวดที่ใช้เงินสูงสุดเดือนนี้</h3>
-        <p className="text-sm text-gray-500">ยังไม่มีรายจ่ายในเดือนนี้</p>
-      </div>
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+            หมวดที่ใช้เงินสูงสุด
+          </h3>
+          <p className="text-sm text-muted-foreground">ยังไม่มีรายจ่ายในเดือนนี้</p>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -28,57 +32,70 @@ export default function TopSpendingCategories({ categories, totalExpense, catego
   const showOtherRow = otherTotal > 0
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-4">
-      <h3 className="text-sm font-medium text-gray-600 mb-3">หมวดที่ใช้เงินสูงสุดเดือนนี้</h3>
-      <div className="space-y-3">
-        {categories.map((cat) => {
-          const budget = categoryBudgets?.[cat.category] ?? 0
-          const isOverBudget = budget > 0 && cat.total > budget
-          const barPercent = (cat.total / maxTotal) * 100
-          return (
-            <div key={cat.category} className="space-y-1">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-700 truncate pr-2 flex items-center gap-1.5">
-                  <span className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${getCategoryIconStyle(cat.category).bg} ${getCategoryIconStyle(cat.category).icon}`} title={cat.category}>
-                    <CategoryIcon category={cat.category} iconOnly />
+    <Card>
+      <CardContent className="p-4">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-4">
+          หมวดที่ใช้เงินสูงสุด
+        </h3>
+        <div className="space-y-4">
+          {categories.map((cat) => {
+            const budget = categoryBudgets?.[cat.category] ?? 0
+            const isOverBudget = budget > 0 && cat.total > budget
+            const barPercent = (cat.total / maxTotal) * 100
+            const style = getCategoryIconStyle(cat.category)
+            return (
+              <div key={cat.category} className="space-y-1.5">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-foreground truncate pr-2 flex items-center gap-2">
+                    <span
+                      className={`shrink-0 w-7 h-7 rounded-lg flex items-center justify-center ${style.bg} ${style.icon}`}
+                    >
+                      <CategoryIcon category={cat.category} iconOnly />
+                    </span>
+                    {cat.category}
                   </span>
-                  {cat.category}
+                  <span className={`text-sm font-semibold tabular-nums shrink-0 ${isOverBudget ? 'text-danger' : 'text-foreground'}`}>
+                    ฿{cat.total.toLocaleString('th-TH')}
+                    <span className="text-xs font-normal text-muted-foreground ml-1">
+                      ({cat.percent.toFixed(0)}%)
+                    </span>
+                  </span>
+                </div>
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${isOverBudget ? 'bg-danger' : 'bg-primary'}`}
+                    style={{ width: `${Math.min(barPercent, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+          {showOtherRow && (
+            <div className="space-y-1.5 pt-3 border-t border-border">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground truncate pr-2 flex items-center gap-2">
+                  <span className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center bg-muted text-muted-foreground">
+                    <CategoryIcon category="อื่นๆ" iconOnly />
+                  </span>
+                  รวมหมวดอื่น
                 </span>
-                <span className={`font-medium shrink-0 ${isOverBudget ? 'text-red-600/90' : 'text-gray-900'}`}>
-                  {cat.total.toLocaleString('th-TH')} บาท ({cat.percent.toFixed(0)}%)
+                <span className="font-semibold tabular-nums text-muted-foreground shrink-0">
+                  ฿{otherTotal.toLocaleString('th-TH')}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">
+                    ({otherPercent.toFixed(0)}%)
+                  </span>
                 </span>
               </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all ${isOverBudget ? 'bg-red-300' : 'bg-amber-200'}`}
-                  style={{ width: `${Math.min(barPercent, 100)}%` }}
+                  className="h-full bg-muted-foreground/30 rounded-full transition-all"
+                  style={{ width: `${(otherTotal / maxTotal) * 100}%` }}
                 />
               </div>
             </div>
-          )
-        })}
-        {showOtherRow && (
-          <div className="space-y-1 pt-1 border-t border-gray-100">
-            <div className="flex justify-between text-sm">
-                <span className="text-gray-500 truncate pr-2 flex items-center gap-1.5">
-                <span className="shrink-0 w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 text-gray-600">
-                  <CategoryIcon category="อื่นๆ" iconOnly />
-                </span>
-                รวมหมวดอื่น
-              </span>
-              <span className="font-medium text-gray-600 shrink-0">
-                {otherTotal.toLocaleString('th-TH')} บาท ({otherPercent.toFixed(0)}%)
-              </span>
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gray-300 rounded-full transition-all"
-                style={{ width: `${(otherTotal / maxTotal) * 100}%` }}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

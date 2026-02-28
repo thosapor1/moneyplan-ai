@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
 import AppInitializer from '@/components/AppInitializer'
-
-const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'MoneyPlan AI - วางแผนการเงินส่วนบุคคล',
@@ -25,7 +22,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#1f2937',
+  themeColor: '#0f766e',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
@@ -45,10 +42,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="MoneyPlan AI" />
       </head>
-      <body className={inter.className}>
-        <AppInitializer>
-          {children}
-        </AppInitializer>
+      <body className="bg-background text-foreground antialiased">
+        <div className="min-h-screen max-w-lg mx-auto relative">
+          <AppInitializer>
+            {children}
+          </AppInitializer>
+        </div>
       </body>
     </html>
   )

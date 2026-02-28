@@ -1,34 +1,34 @@
 'use client'
 
 import type { FinancialStatus } from '@/lib/finance'
+import { ShieldCheck, AlertTriangle, XCircle } from 'lucide-react'
 
 type Props = {
   status: FinancialStatus
   currentBalance: number
   daysLeft: number
   remainingDays: number
-  /** Short coach-style recommendation (e.g. "ค่าใช้จ่ายอาหารสูงกว่าปกติ ลองลดลงวันละ 50 บาท") */
   recommendation?: string
 }
 
-const STATUS_CONFIG: Record<FinancialStatus, { label: string; bg: string; text: string; soft: string }> = {
+const STATUS_CONFIG: Record<
+  FinancialStatus,
+  { label: string; gradient: string; Icon: React.ComponentType<{ className?: string }> }
+> = {
   Healthy: {
     label: 'ปลอดภัย',
-    bg: 'bg-emerald-50',
-    text: 'text-emerald-700',
-    soft: 'bg-emerald-100/60',
+    gradient: 'gradient-hero',
+    Icon: ShieldCheck,
   },
   Warning: {
     label: 'เสี่ยง',
-    bg: 'bg-amber-50',
-    text: 'text-amber-700',
-    soft: 'bg-amber-100/60',
+    gradient: 'gradient-warning',
+    Icon: AlertTriangle,
   },
   Risk: {
     label: 'อาจติดลบ',
-    bg: 'bg-red-50',
-    text: 'text-red-700',
-    soft: 'bg-red-100/60',
+    gradient: 'gradient-danger',
+    Icon: XCircle,
   },
 }
 
@@ -40,21 +40,24 @@ export default function FinancialStatusCard({
   recommendation,
 }: Props) {
   const config = STATUS_CONFIG[status]
+  const { Icon } = config
   const daysLeftDisplay = daysLeft === Infinity ? '∞' : Math.floor(daysLeft)
 
   return (
-    <div className={`rounded-2xl p-5 ${config.bg} shadow-sm`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium ${config.soft} ${config.text}`}>
-          {config.label}
-        </span>
+    <div className={`rounded-xl p-5 text-white ${config.gradient}`}>
+      <div className="flex items-center gap-2 mb-1">
+        <Icon className="w-5 h-5" />
+        <span className="text-sm font-medium opacity-90">{config.label}</span>
       </div>
+      <p className="text-3xl font-bold tabular-nums">
+        ฿{currentBalance.toLocaleString('th-TH')}
+      </p>
+      <p className="text-sm opacity-80 mt-1">ยอดคงเหลือประจำงวด</p>
       {recommendation && (
-        <p className="text-sm text-gray-600 mb-3 leading-relaxed">{recommendation}</p>
+        <p className="text-sm opacity-90 mt-2 leading-relaxed">{recommendation}</p>
       )}
-      <p className="text-xs text-gray-500">
-        ยอดคงเหลือตอนนี้ <span className="font-medium text-gray-700">{currentBalance.toLocaleString('th-TH')} บาท</span>
-        {' · '}คงอยู่ได้ประมาณ {daysLeftDisplay} วัน (เหลืออีก {remainingDays} วันในเดือน)
+      <p className="text-xs opacity-70 mt-2">
+        คงอยู่ได้ ~{daysLeftDisplay} วัน · เหลืออีก {remainingDays} วัน
       </p>
     </div>
   )

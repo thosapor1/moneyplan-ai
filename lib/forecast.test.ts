@@ -51,11 +51,11 @@ describe('computePlannedRemaining', () => {
       )
     ).toBe(0)
   })
-  it('does not count rent again when already paid this period', () => {
+  it('does not count bills again when already paid this period', () => {
     const txs = [
-      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2026-01-28' },
-      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2025-12-28' },
-      { type: 'expense' as const, amount: 20000, category: 'ที่พัก/ค่าเช่า', date: '2025-11-28' },
+      { type: 'expense' as const, amount: 20000, category: 'บิล/ค่าใช้จ่าย', date: '2026-01-28' },
+      { type: 'expense' as const, amount: 20000, category: 'บิล/ค่าใช้จ่าย', date: '2025-12-28' },
+      { type: 'expense' as const, amount: 20000, category: 'บิล/ค่าใช้จ่าย', date: '2025-11-28' },
     ]
     const planned = computePlannedRemaining(
       txs,
