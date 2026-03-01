@@ -1,18 +1,16 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase, Profile, fetchCategoryBudgets, saveCategoryBudgets, fetchDebtItems, insertDebtItem, deleteDebtItem, type DebtItemRow } from '@/lib/supabase'
+import { supabase, Profile, fetchDebtItems, type DebtItemRow } from '@/lib/supabase'
 import { format } from 'date-fns'
 import FinancialAnalysis from '@/components/FinancialAnalysis'
 import BottomNavigation from '@/components/BottomNavigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
-import { EXPENSE_CATEGORIES } from '@/lib/storage'
 import { getActiveMonthRange } from '@/lib/period'
-import { getExpenseCategoryType } from '@/lib/forecast'
 import {
   TrendingUpIcon,
   TrendingDownIcon,
@@ -27,22 +25,23 @@ const formatCurrency = (n: number) => n.toLocaleString('th-TH')
 export default function ProfilePage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [totalIncome, setTotalIncome] = useState(0)
   const [totalSavingFromTransactions, setTotalSavingFromTransactions] = useState<number | undefined>(undefined)
   const [totalDebtPaymentFromTransactions, setTotalDebtPaymentFromTransactions] = useState<number | undefined>(undefined)
   const [profile, setProfile] = useState<Profile>({
-    id: '', monthly_debt_payment: 0, fixed_expense: 0, variable_expense: 0,
-    saving: 0, investment: 0, liquid_assets: 0, total_assets: 0, total_liabilities: 0, month_end_day: 0,
+    id: '',
+    monthly_debt_payment: 0,
+    fixed_expense: 0,
+    variable_expense: 0,
+    saving: 0,
+    investment: 0,
+    liquid_assets: 0,
+    total_assets: 0,
+    total_liabilities: 0,
+    month_end_day: 0,
+    include_carried_over: true,
   })
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const initialProfileRef = useRef<Profile | null>(null)
-  const profileRef = useRef<Profile>(profile)
-  const [numericInputs, setNumericInputs] = useState<Partial<Record<keyof Profile, string>>>({})
-  const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
   const [debtItems, setDebtItems] = useState<DebtItemRow[]>([])
-
-  useEffect(() => { profileRef.current = profile }, [profile])
 
   const loadProfile = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -52,17 +51,12 @@ export default function ProfilePage() {
       const { data, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
       if (error && error.code !== 'PGRST116') console.error('Error loading profile:', error)
       else if (data) {
-        setProfile({ ...data, month_end_day: data.month_end_day ?? 0 })
-        initialProfileRef.current = { ...data, month_end_day: data.month_end_day ?? 0 }
-      } else {
-        const newProfile: Profile = { id: session.user.id, monthly_debt_payment: 0, fixed_expense: 0, variable_expense: 0, saving: 0, investment: 0, liquid_assets: 0, total_assets: 0, total_liabilities: 0, month_end_day: 0 }
-        setProfile(newProfile)
-        initialProfileRef.current = newProfile
+        setProfile({ ...data, month_end_day: data.month_end_day ?? 0, include_carried_over: data.include_carried_over ?? true })
       }
 
       const now = new Date()
-      const monthEndDay = 0
-      const { start, end } = getActiveMonthRange(now, monthEndDay)
+      const salaryDay = (data as any)?.month_end_day ?? 0
+      const { start, end } = getActiveMonthRange(now, salaryDay)
       const { data: transactionsData, error: transactionsError } = await supabase
         .from('transactions').select('*').eq('user_id', session.user.id)
         .gte('date', format(start, 'yyyy-MM-dd')).lte('date', format(end, 'yyyy-MM-dd'))
@@ -76,52 +70,11 @@ export default function ProfilePage() {
         setTotalDebtPaymentFromTransactions(undefined)
       }
 
-      setCategoryBudgetsState(await fetchCategoryBudgets(session.user.id))
       setDebtItems(await fetchDebtItems(session.user.id))
     } catch (error) { console.error('Error:', error) } finally { setLoading(false) }
   }, [router])
 
   useEffect(() => { loadProfile() }, [loadProfile])
-
-  const saveProfile = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session || !profileRef.current.id) return
-    try {
-      setSaving(true)
-      const profileToSave = { ...profileRef.current }
-      const { error } = await supabase.from('profiles').upsert({ ...profileToSave, id: session.user.id, updated_at: new Date().toISOString() })
-      if (error) throw error
-      initialProfileRef.current = { ...profileToSave }
-    } catch (error: any) {
-      console.error('Error saving profile:', error)
-      if (initialProfileRef.current) setProfile(initialProfileRef.current)
-    } finally { setSaving(false) }
-  }
-
-  const handleFieldChange = (field: keyof Profile, value: number) => {
-    setProfile((prev) => ({ ...prev, [field]: value }))
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    setSaving(true)
-    saveTimeoutRef.current = setTimeout(() => { saveProfile() }, 1000)
-  }
-
-  const handleFieldBlur = () => {
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    saveProfile()
-  }
-
-  type NumericField = 'fixed_expense' | 'variable_expense' | 'monthly_debt_payment' | 'saving' | 'investment' | 'liquid_assets' | 'total_assets' | 'total_liabilities'
-  const getNumericDisplay = (field: NumericField) => numericInputs[field] !== undefined ? numericInputs[field] : String(profile[field] ?? 0)
-  const handleNumericChange = (field: NumericField, e: React.ChangeEvent<HTMLInputElement>) => setNumericInputs((prev) => ({ ...prev, [field]: e.target.value }))
-  const handleNumericBlur = (field: NumericField) => {
-    const raw = numericInputs[field] ?? profile[field] ?? 0
-    const num = typeof raw === 'string' ? (parseFloat(raw) || 0) : Number(raw) || 0
-    handleFieldChange(field, num)
-    setNumericInputs((prev) => { const next = { ...prev }; delete next[field]; return next })
-    handleFieldBlur()
-  }
-
-  useEffect(() => { return () => { if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current) } }, [])
 
   if (loading) {
     return (
@@ -138,16 +91,15 @@ export default function ProfilePage() {
   const savingFromProfile = (profile.saving ?? 0) + (profile.investment ?? 0)
   const debtPaymentFromProfile = profile.monthly_debt_payment ?? 0
 
-  // Fallback income: sum of all outflows when no income transactions recorded
   const effectiveIncome = totalIncome > 0
     ? totalIncome
     : (monthlyExpenses + savingFromProfile + debtPaymentFromProfile)
 
-  // Prefer actual transaction amounts over profile targets (same logic as FinancialAnalysis)
-  const actualSaving = totalSavingFromTransactions !== undefined && totalSavingFromTransactions >= 0
+  // Use Settings value as base; override with actual transactions only when > 0
+  const actualSaving = totalSavingFromTransactions !== undefined && totalSavingFromTransactions > 0
     ? totalSavingFromTransactions
     : savingFromProfile
-  const actualDebtPayment = totalDebtPaymentFromTransactions !== undefined && totalDebtPaymentFromTransactions >= 0
+  const actualDebtPayment = totalDebtPaymentFromTransactions !== undefined && totalDebtPaymentFromTransactions > 0
     ? totalDebtPaymentFromTransactions
     : debtPaymentFromProfile
 
@@ -157,7 +109,6 @@ export default function ProfilePage() {
   const emergencyMonthsExact = monthlyExpenses > 0 ? (profile.liquid_assets ?? 0) / monthlyExpenses : 0
   const fixedExpenseRatio = effectiveIncome > 0 ? Math.round((profile.fixed_expense ?? 0) / effectiveIncome * 100) : 0
 
-  // Health score: thresholds aligned with FinancialAnalysis (>=10% savings = good)
   let healthScore = 50
   if (savingsRate >= 20) healthScore += 15; else if (savingsRate >= 10) healthScore += 10; else if (savingsRate > 0) healthScore += 3
   if (debtRatio === 0) healthScore += 10; else if (debtRatio <= 30) healthScore += 5; else if (debtRatio <= 50) healthScore += 0; else healthScore -= 10
@@ -167,13 +118,10 @@ export default function ProfilePage() {
 
   const totalDebt = profile.total_liabilities ?? 0
   const currentSaved = profile.liquid_assets ?? 0
-  // Savings target: 6 months of expenses (standard emergency fund benchmark)
   const emergencyTarget = monthlyExpenses > 0 ? monthlyExpenses * 6 : 100000
-  // Debt ring: use debtItems total if available, otherwise profile total_liabilities
   const debtItemsTotal = debtItems.length > 0
     ? debtItems.reduce((s, d) => s + Number(d.remaining), 0)
     : totalDebt
-  // Debt paid = profile.total_liabilities - sum of debtItem remaining (if items exist)
   const debtPaidSoFar = debtItems.length > 0 && totalDebt > debtItemsTotal
     ? totalDebt - debtItemsTotal
     : 0
@@ -210,13 +158,6 @@ export default function ProfilePage() {
           <span className="text-sm font-medium">ออกจากระบบ</span>
         </button>
       </div>
-
-      {saving && (
-        <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 flex items-center gap-2 mb-4">
-          <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
-          <span className="text-sm text-primary">กำลังบันทึก...</span>
-        </div>
-      )}
 
       {/* Health Score Gauge */}
       <Card className="shadow-card border-0 mb-6">
@@ -311,7 +252,7 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Budget Table */}
+      {/* Budget Summary (display only) */}
       <div className="mb-6">
         <h3 className="font-semibold text-foreground mb-3">งบประมาณรายเดือน</h3>
         <Card className="shadow-card border-0">
@@ -363,142 +304,6 @@ export default function ProfilePage() {
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Settings — Editable Fields */}
-      <div className="mb-6">
-        <h3 className="font-semibold text-foreground mb-3">ตั้งค่ารายรับรายจ่าย</h3>
-        <Card className="shadow-card border-0">
-          <CardContent className="p-4 space-y-3">
-            {([
-              ['fixed_expense', 'รายจ่ายคงที่ (บาท)'],
-              ['variable_expense', 'รายจ่ายผันแปร (บาท)'],
-              ['monthly_debt_payment', 'ผ่อนหนี้ต่อเดือน (บาท)'],
-              ['saving', 'เงินออม (บาท)'],
-              ['investment', 'เงินลงทุน (บาท)'],
-              ['liquid_assets', 'ทรัพย์สินสภาพคล่อง (บาท)'],
-              ['total_assets', 'ทรัพย์สินรวม (บาท)'],
-              ['total_liabilities', 'หนี้สินรวม (บาท)'],
-            ] as [NumericField, string][]).map(([field, label]) => (
-              <div key={field}>
-                <label className="block text-xs text-muted-foreground mb-1">{label}</label>
-                <input
-                  type="number"
-                  value={getNumericDisplay(field)}
-                  onChange={(e) => handleNumericChange(field, e)}
-                  onBlur={() => handleNumericBlur(field)}
-                  className="w-full px-4 py-2 border border-border rounded-xl focus:ring-2 focus:ring-primary text-foreground placeholder:text-muted-foreground bg-card text-sm"
-                  min="0" step="0.01"
-                />
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Debt Items */}
-      <div className="mb-6">
-        <h3 className="font-semibold text-foreground mb-3">รายการหนี้แยกประเภท</h3>
-        <Card className="shadow-card border-0">
-          <CardContent className="p-4">
-            {debtItems.length > 0 && (
-              <div className="space-y-2 mb-4">
-                {debtItems.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-secondary border border-border">
-                    <div>
-                      <span className="text-sm font-medium text-foreground">{item.name}</span>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        <span>คงเหลือ ฿{formatCurrency(Number(item.remaining))}</span>
-                        {item.interest_rate != null && <span>ดอกเบี้ย {item.interest_rate}%</span>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {item.priority === 'high' && <Badge variant="warning" className="text-[10px]">ควรโปะก่อน</Badge>}
-                      <button
-                        onClick={async () => {
-                          await deleteDebtItem(item.id)
-                          const { data: { session } } = await supabase.auth.getSession()
-                          if (session) setDebtItems(await fetchDebtItems(session.user.id))
-                        }}
-                        className="p-1 text-muted-foreground hover:text-danger transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            <form
-              className="space-y-2"
-              onSubmit={async (e) => {
-                e.preventDefault()
-                const form = e.currentTarget
-                const name = (form.querySelector('[name="debt_name"]') as HTMLInputElement)?.value?.trim()
-                const remaining = parseFloat((form.querySelector('[name="debt_remaining"]') as HTMLInputElement)?.value || '0')
-                const interestRate = (form.querySelector('[name="debt_rate"]') as HTMLInputElement)?.value
-                const priority = (form.querySelector('[name="debt_priority"]') as HTMLSelectElement)?.value as 'high' | 'normal'
-                if (!name || remaining <= 0) return
-                const { data: { session } } = await supabase.auth.getSession()
-                if (!session) return
-                const created = await insertDebtItem(session.user.id, { name, remaining, interest_rate: interestRate ? parseFloat(interestRate) : undefined, priority: priority === 'high' ? 'high' : 'normal' })
-                if (created) { setDebtItems(await fetchDebtItems(session.user.id)); form.reset() }
-              }}
-            >
-              <input name="debt_name" type="text" placeholder="ชื่อหนี้ (เช่น บัตรเครดิต A)" className="w-full px-4 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card" required />
-              <div className="flex gap-2">
-                <input name="debt_remaining" type="number" min="0" step="1" placeholder="ยอดคงเหลือ" className="flex-1 px-4 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card" required />
-                <input name="debt_rate" type="number" min="0" step="0.1" placeholder="ดอกเบี้ย %" className="w-24 px-4 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card" />
-              </div>
-              <select name="debt_priority" className="w-full px-4 py-2 border border-border rounded-xl text-foreground text-sm bg-card">
-                <option value="normal">ความสำคัญ: ปกติ</option>
-                <option value="high">ควรโปะก่อน</option>
-              </select>
-              <button type="submit" className="w-full py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">เพิ่มรายการหนี้</button>
-            </form>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* App Settings */}
-      <div className="mb-6">
-        <h3 className="font-semibold text-foreground mb-3">ตั้งค่าแอป</h3>
-        <Card className="shadow-card border-0">
-          <CardContent className="p-4 space-y-4">
-            <p className="text-xs text-muted-foreground">งวดรายเดือนใช้ตามปฏิทิน (1 ถึง สิ้นเดือน)</p>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-2">งบรายจ่ายรายเดือนต่อหมวด</label>
-              <Card className="shadow-card border-0">
-                <CardContent className="p-0">
-                  {EXPENSE_CATEGORIES.map((cat, i) => {
-                    const value = categoryBudgets[cat] ?? 0
-                    const tagType = getExpenseCategoryType(cat)
-                    const frequency = tagType === 'fixed' ? 'รายเดือน' : 'รายวัน'
-                    return (
-                      <div key={cat} className={`flex items-center px-4 py-3 ${i !== EXPENSE_CATEGORIES.length - 1 ? 'border-b border-border' : ''}`}>
-                        <span className="flex-1 text-sm text-foreground">{cat}</span>
-                        <Badge variant="secondary" className="text-[10px] mr-3">{frequency}</Badge>
-                        <input
-                          type="number" min="0" step="1"
-                          value={value === 0 ? '' : value}
-                          onChange={async (e) => {
-                            const num = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0
-                            const next = { ...categoryBudgets, [cat]: num }
-                            setCategoryBudgetsState(next)
-                            const { data: { session } } = await supabase.auth.getSession()
-                            if (session) await saveCategoryBudgets(session.user.id, next)
-                          }}
-                          placeholder="0"
-                          className="w-24 px-3 py-2 border border-border rounded-xl text-foreground text-sm text-right bg-card"
-                        />
-                      </div>
-                    )
-                  })}
-                </CardContent>
-              </Card>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Financial Analysis */}

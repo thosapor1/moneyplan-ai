@@ -17,10 +17,13 @@
 export {
   VISIBLE_CATEGORIES_KEY,
   MONTH_END_DAY_KEY,
+  INCLUDE_CARRIED_OVER_KEY,
   EXPENSE_CATEGORIES,
   getVisibleCategories,
   setVisibleCategories,
   getMonthEndDay,
   setMonthEndDay,
+  getIncludeCarriedOver,
+  setIncludeCarriedOver,
   type ExpenseCategory,
 } from "../src/infrastructure/storage/local-settings";

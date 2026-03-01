@@ -17,6 +17,9 @@ export const VISIBLE_CATEGORIES_KEY = 'moneyplan_visible_categories'
 /** localStorage key: custom month end day (0 = calendar month, 1..31 = custom day). */
 export const MONTH_END_DAY_KEY = 'moneyplan_month_end_day'
 
+/** localStorage key: include carried-over balance from previous month in dashboard. true = include (default). */
+export const INCLUDE_CARRIED_OVER_KEY = 'moneyplan_include_carried_over'
+
 /**
  * Expense categories used across the app.
  * (Used for UI filters, budgets, and transaction categorization.)
@@ -105,8 +108,62 @@ export function setMonthEndDay(day: number): void {
   }
 }
 
+/**
+ * Read "include carried over balance" from localStorage.
+ * - Returns true if not set (default: include carried over).
+ */
+export function getIncludeCarriedOver(): boolean {
+  if (!isBrowser()) return true
+  try {
+    const raw = localStorage.getItem(INCLUDE_CARRIED_OVER_KEY)
+    if (raw == null || raw === '') return true
+    return raw === 'true'
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Persist "include carried over balance" preference.
+ */
+export function setIncludeCarriedOver(value: boolean): void {
+  if (!isBrowser()) return
+  try {
+    localStorage.setItem(INCLUDE_CARRIED_OVER_KEY, String(value))
+  } catch (e) {
+    console.error('setIncludeCarriedOver:', e)
+  }
+}
+
 function clampInt(value: number, min: number, max: number): number {
   const n = Math.floor(Number(value))
   if (Number.isNaN(n)) return min
   return Math.max(min, Math.min(max, n))
+}
+
+// ─── Salary Day (domain alias for month_end_day) ──────────────────────────────
+//
+// "salaryDay" is the domain-level name used in src/domain/budget/budget-cycle.ts.
+// "monthEndDay" is the storage-level name (localStorage key + DB column name).
+// They represent the same concept — these are thin aliases so callers can use
+// the semantically correct name without touching storage keys.
+
+/**
+ * Read the salary day (= custom month-end day).
+ * Alias for getMonthEndDay() with the domain-level name.
+ * - Returns 0 when not set (calendar month, no custom cycle).
+ * - Valid range: 0–31.
+ */
+export function getSalaryDay(): number {
+  return getMonthEndDay()
+}
+
+/**
+ * Persist the salary day (= custom month-end day).
+ * Alias for setMonthEndDay() with the domain-level name.
+ * - 0 = calendar month.
+ * - 1–31 = salary/billing cycle start day.
+ */
+export function setSalaryDay(day: number): void {
+  setMonthEndDay(day)
 }

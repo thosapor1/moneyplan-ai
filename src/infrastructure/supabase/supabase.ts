@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { normalizeCategoryName, getLegacyCategoryNames } from '../../domain/finance/finance'
 
 /**
  * Infrastructure: Supabase client + thin data-access helpers.
@@ -58,6 +59,8 @@ export type ProfileRow = {
   total_liabilities: number
   /** 0 = calendar month, 1-31 = custom month end day */
   month_end_day?: number
+  /** true = include carried-over balance from previous month in dashboard */
+  include_carried_over?: boolean
 }
 
 export type TransactionRow = {
@@ -100,7 +103,7 @@ export type DebtItemRow = {
   updated_at?: string
 }
 
-/** Load per-category monthly budgets (บาท) for the user. */
+/** Load per-category monthly budgets (บาท) for the user. Keys are normalized to canonical names so they match transaction categories and calculations are correct. */
 export async function fetchCategoryBudgets(userId: string): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from('category_budgets')
@@ -116,7 +119,10 @@ export async function fetchCategoryBudgets(userId: string): Promise<Record<strin
   for (const row of data || []) {
     const n = Number((row as any).budget)
     const category = String((row as any).category ?? '').trim()
-    if (category && !Number.isNaN(n) && n >= 0) result[category] = n
+    if (category && !Number.isNaN(n) && n >= 0) {
+      const canonical = normalizeCategoryName(category)
+      result[canonical] = (result[canonical] ?? 0) + n
+    }
   }
   return result
 }
@@ -129,7 +135,12 @@ export async function saveCategoryBudgets(
   userId: string,
   budgets: Record<string, number>
 ): Promise<{ error: Error | null }> {
-  const rows = Object.entries(budgets).map(([category, budget]) => ({
+  const canonicalMap: Record<string, number> = {}
+  for (const [category, budget] of Object.entries(budgets)) {
+    const canonical = normalizeCategoryName(category.trim())
+    canonicalMap[canonical] = (canonicalMap[canonical] ?? 0) + (Number(budget) || 0)
+  }
+  const rows = Object.entries(canonicalMap).map(([category, budget]) => ({
     user_id: userId,
     category,
     budget: Number(budget) || 0,
@@ -144,6 +155,14 @@ export async function saveCategoryBudgets(
     console.error('saveCategoryBudgets:', error)
     return { error }
   }
+
+  const canonicalKeys = new Set(Object.keys(canonicalMap))
+  for (const legacyName of getLegacyCategoryNames()) {
+    if (canonicalKeys.has(normalizeCategoryName(legacyName))) {
+      await supabase.from('category_budgets').delete().eq('user_id', userId).eq('category', legacyName)
+    }
+  }
+
   return { error: null }
 }
 

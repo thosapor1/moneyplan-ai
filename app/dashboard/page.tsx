@@ -34,12 +34,14 @@ import {
   getActivePeriodMonth,
   getRemainingDaysInPeriod,
 } from "@/src/domain/period/period";
+import { formatCycleLabel } from "@/src/domain/budget/budget-cycle";
 import {
   computeVariableDailyRate,
   computePlannedRemaining,
   computeForecastEnd,
 } from "@/src/domain/forecast/forecast";
 import { getDailySpendingForPeriod } from "@/lib/chart-data";
+import { getIncludeCarriedOver, setIncludeCarriedOver } from "@/lib/storage";
 import CategoryIcon from "@/components/CategoryIcon";
 import {
   TrendingUpIcon,
@@ -63,6 +65,8 @@ export default function DashboardPage() {
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
+  const [carriedOverBalance, setCarriedOverBalance] = useState(0);
+  const [includeCarriedOver, setIncludeCarriedOverState] = useState(true);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -128,6 +132,24 @@ export default function DashboardPage() {
           setTotalIncome(income);
           setTotalExpense(expense);
         }
+
+        // Carry-forward: always compute from the previous cycle (works for both
+        // calendar months and custom salary-day cycles).
+        const prevMonth = addMonths(month, -1);
+        const { start: prevStart, end: prevEnd } = getMonthRange(prevMonth, monthEndDayVal);
+        const { data: prevData } = await supabase
+          .from("transactions")
+          .select("type, amount")
+          .eq("user_id", user.id)
+          .gte("date", format(prevStart, "yyyy-MM-dd"))
+          .lte("date", format(prevEnd, "yyyy-MM-dd"));
+        const prevIncome = (prevData || [])
+          .filter((t) => t.type === "income")
+          .reduce((s, t) => s + Number(t.amount), 0);
+        const prevExpense = (prevData || [])
+          .filter((t) => t.type === "expense")
+          .reduce((s, t) => s + Number(t.amount), 0);
+        setCarriedOverBalance(prevIncome - prevExpense);
       } catch (error) {
         console.error("Error loading month data:", error);
       }
@@ -165,12 +187,14 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  const monthEndDay = 0
+  // Read salary day from profile (same as month_end_day in DB).
+  // 0 = calendar month; 1–31 = custom salary-day cycle (e.g. 27 → cycle is 27th to 26th).
+  const monthEndDay = profile?.month_end_day ?? 0
 
   useEffect(() => {
     if (!user) return;
     if (!initialMonthSetRef.current && profile != null) {
-      const activeMonth = getActivePeriodMonth(new Date(), 0);
+      const activeMonth = getActivePeriodMonth(new Date(), monthEndDay);
       setSelectedMonth(activeMonth);
       initialMonthSetRef.current = true;
       return;
@@ -186,6 +210,12 @@ export default function DashboardPage() {
     return () => window.removeEventListener("focus", onFocus);
   }, [user]);
 
+  useEffect(() => {
+    if (profile != null) {
+      setIncludeCarriedOverState(profile.include_carried_over ?? getIncludeCarriedOver());
+    }
+  }, [profile?.id, profile?.include_carried_over]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background pb-20">
@@ -199,12 +229,18 @@ export default function DashboardPage() {
 
   const now = new Date();
   const monthRange = getMonthRange(selectedMonth, monthEndDay);
+  // Cycle label: "27 ก.พ. – 26 มี.ค." (never "มีนาคม" or "March Budget")
+  const cycleLabel = formatCycleLabel({ startDate: monthRange.start, endDate: monthRange.end });
+  // Previous cycle range — used to label carry-forward so the user knows exactly where it comes from.
+  const prevCycleRange = getMonthRange(addMonths(selectedMonth, -1), monthEndDay);
+  const prevCycleLabel = formatCycleLabel({ startDate: prevCycleRange.start, endDate: prevCycleRange.end });
   const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startDate = new Date(monthRange.start.getFullYear(), monthRange.start.getMonth(), monthRange.start.getDate()).getTime();
   const endDate = new Date(monthRange.end.getFullYear(), monthRange.end.getMonth(), monthRange.end.getDate()).getTime();
   const isViewingCurrentMonth = nowDate >= startDate && nowDate <= endDate;
   const remainingDays = getRemainingDaysInPeriod(now, monthRange);
-  const currentBalance = getCurrentBalance(totalIncome, totalExpense);
+  const effectiveCarriedOver = includeCarriedOver ? carriedOverBalance : 0;
+  const currentBalance = effectiveCarriedOver + getCurrentBalance(totalIncome, totalExpense);
   const dailySpendingData = getDailySpendingForPeriod(
     allTransactions.map((t) => ({ type: t.type, amount: Number(t.amount), date: t.date })),
     monthRange.start,
@@ -281,7 +317,38 @@ export default function DashboardPage() {
             </span>
           </div>
           <p className="text-3xl font-bold tabular-nums">฿{formatCurrency(currentBalance)}</p>
-          <p className="text-sm opacity-80 mt-1">ยอดคงเหลือประจำเดือน</p>
+          <p className="text-sm opacity-80 mt-1">งวด {cycleLabel}</p>
+          {carriedOverBalance !== 0 && (
+            <label className="flex items-center gap-2 mt-2 text-xs opacity-90 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={includeCarriedOver}
+                onChange={async (e) => {
+                  const v = e.target.checked;
+                  setIncludeCarriedOverState(v);
+                  setIncludeCarriedOver(v);
+                  if (user) {
+                    const { error } = await supabase
+                      .from("profiles")
+                      .update({ include_carried_over: v, updated_at: new Date().toISOString() })
+                      .eq("id", user.id);
+                    if (!error) setProfile((prev) => (prev ? { ...prev, include_carried_over: v } : prev));
+                  }
+                }}
+                className="rounded border-white/60 bg-white/20"
+              />
+              <span>
+                ยอดยกมาจากงวด {prevCycleLabel}
+                {" "}
+                <span className={carriedOverBalance >= 0 ? "text-green-300" : "text-red-300"}>
+                  {carriedOverBalance >= 0 ? "+" : ""}฿{formatCurrency(carriedOverBalance)}
+                </span>
+              </span>
+            </label>
+          )}
+          {carriedOverBalance !== 0 && !includeCarriedOver && (
+            <p className="text-xs opacity-75 mt-1">ไม่รวมยอดยกมา · คงเหลือ = รายรับงวดนี้ − รายจ่ายงวดนี้</p>
+          )}
         </div>
       </div>
 
@@ -291,6 +358,11 @@ export default function DashboardPage() {
         <MetricCard label="รายจ่าย" amount={totalExpense} icon={<WalletIcon size={16} />} variant="danger" />
         <MetricCard label="คงเหลือ" amount={currentBalance} icon={<CreditCardIcon size={16} />} variant="primary" />
       </div>
+      {carriedOverBalance !== 0 && includeCarriedOver && (
+        <p className="px-4 text-xs text-muted-foreground mb-2">
+          คงเหลือ = ยอดยกมา ({prevCycleLabel}: {carriedOverBalance >= 0 ? "+" : ""}฿{formatCurrency(carriedOverBalance)}) + รายรับงวดนี้ − รายจ่ายงวดนี้
+        </p>
+      )}
 
       {/* Savings Goals — always show links to goal pages */}
       <div className="px-4 mb-6">

@@ -193,6 +193,11 @@ export function normalizeCategoryName(category: string): string {
   return CATEGORY_ALIASES[trimmed] ?? trimmed
 }
 
+/** Legacy category names that map to a canonical (for cleaning DB when saving budgets). */
+export function getLegacyCategoryNames(): string[] {
+  return Object.keys(CATEGORY_ALIASES)
+}
+
 /**
  * Sum of expenses per category within range (inclusive),
  * using date strings (YYYY-MM-DD) which are lexicographically sortable.

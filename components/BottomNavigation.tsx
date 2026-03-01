@@ -2,13 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { DashboardIcon, ReceiptIcon, HeartPulseIcon, CalendarIcon } from './icons'
+import { DashboardIcon, ReceiptIcon, HeartPulseIcon, CalendarIcon, SettingsIcon } from './icons'
 
 const navItems = [
   { href: '/dashboard', label: 'ภาพรวม', Icon: DashboardIcon },
   { href: '/transactions', label: 'รายรับรายจ่าย', Icon: ReceiptIcon },
   { href: '/profile', label: 'สุขภาพการเงิน', Icon: HeartPulseIcon },
   { href: '/forecasts', label: 'แผน 12 เดือน', Icon: CalendarIcon },
+  { href: '/settings', label: 'ตั้งค่า', Icon: SettingsIcon },
 ]
 
 export default function BottomNavigation() {

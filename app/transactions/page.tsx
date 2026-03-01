@@ -31,8 +31,9 @@ export default function TransactionsPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [visibleCategories, setVisibleCategoriesState] = useState<string[]>([])
   const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
-  const [monthEndDay, setMonthEndDayState] = useState(0)
   const [profileLoaded, setProfileLoaded] = useState(false)
+  // Read from profile (same as dashboard) — 0 = calendar month, 1–31 = salary-day cycle
+  const [monthEndDay, setMonthEndDay] = useState(0)
   const initialMonthSetRef = useRef(false)
   const PAGE_SIZE = 30
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
@@ -54,11 +55,14 @@ export default function TransactionsPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/auth/login'); return }
     try {
-      const budgets = await fetchCategoryBudgets(session.user.id)
+      const [profileResult, budgets] = await Promise.all([
+        supabase.from('profiles').select('month_end_day').eq('id', session.user.id).single(),
+        fetchCategoryBudgets(session.user.id),
+      ])
+      if (profileResult.data) {
+        setMonthEndDay(profileResult.data.month_end_day ?? 0)
+      }
       setCategoryBudgetsState(budgets)
-      const { data: profileData } = await supabase
-        .from('profiles').select('month_end_day').eq('id', session.user.id).single()
-      setMonthEndDayState(0)
       setProfileLoaded(true)
     } catch (error) {
       console.error('Error loading profile:', error)
@@ -125,11 +129,7 @@ export default function TransactionsPage() {
       if (session) {
         const budgets = await fetchCategoryBudgets(session.user.id)
         setCategoryBudgetsState(budgets)
-        const { data: profileData } = await supabase
-          .from('profiles').select('month_end_day').eq('id', session.user.id).single()
-        const newMonthEndDay = 0
-        setMonthEndDayState(newMonthEndDay)
-        loadMonthTransactionsRef.current(selectedMonthRef.current, newMonthEndDay)
+        loadMonthTransactionsRef.current(selectedMonthRef.current, 0)
       }
     }
     window.addEventListener('focus', onFocus)
@@ -148,6 +148,7 @@ export default function TransactionsPage() {
   const spentByCategory = computeSpentByCategory(transactionsAsLike, monthRange)
   const remainingByCategory = computeRemainingBudgetByCategory(categoryBudgets, spentByCategory)
   const dailyBudget = computeDailyBudgetFromRemaining(remainingByCategory, remainingDays, VARIABLE_EXPENSE_CATEGORIES)
+  const totalVariableRemaining = VARIABLE_EXPENSE_CATEGORIES.reduce((s, cat) => s + (remainingByCategory[cat] ?? 0), 0)
 
   const isTodayInRange = todayStr >= format(monthRange.start, 'yyyy-MM-dd') && todayStr <= format(monthRange.end, 'yyyy-MM-dd')
 
@@ -286,6 +287,7 @@ export default function TransactionsPage() {
               <p className="text-sm opacity-90 mb-1">ใช้จ่ายวันนี้</p>
               <p className="text-2xl font-bold tabular-nums">฿{formatCurrency(expenseToday)}</p>
               <p className="text-xs opacity-80 mt-1">งบรายวัน: ฿{formatCurrency(Math.round(dailyBudget))}</p>
+              <p className="text-[10px] opacity-70 mt-0.5">งบคงเหลือหมวดผันแปร ฿{formatCurrency(Math.round(totalVariableRemaining))} หารด้วย {remainingDays} วัน = ฿{formatCurrency(Math.round(dailyBudget))} ต่อวัน</p>
             </CardContent>
           </Card>
         </div>
@@ -293,10 +295,13 @@ export default function TransactionsPage() {
 
       {/* Budget Breakdown */}
       {isTodayInRange && (
-        <div className="px-4 mb-4 grid grid-cols-3 gap-3">
-          <StatBox label="เหลืออีก" value={`${remainingDays} วัน`} />
-          <StatBox label="งบรายวัน" value={`฿${formatCurrency(Math.round(dailyBudget))}`} />
-          <StatBox label="เหลือวันนี้" value={`฿${formatCurrency(Math.round(remainingToday))}`} />
+        <div className="px-4 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-1">
+            <StatBox label="เหลืออีก" value={`${remainingDays} วัน`} />
+            <StatBox label="งบรายวัน" value={`฿${formatCurrency(Math.round(dailyBudget))}`} />
+            <StatBox label="เหลือวันนี้" value={`฿${formatCurrency(Math.round(remainingToday))}`} />
+          </div>
+          <p className="text-[10px] text-muted-foreground px-1">งบรายวัน = งบคงเหลือของหมวดผันแปร (อาหาร, เดินทาง ฯลฯ) หารด้วย จำนวนวันคงเหลือ</p>
         </div>
       )}
 
