@@ -16,6 +16,8 @@ import {
   supabase,
   type ProfileRow as Profile,
   type TransactionRow as Transaction,
+  fetchDebtItems,
+  type DebtItemRow,
 } from "@/src/infrastructure/supabase/supabase";
 import BottomNavigation from "@/components/BottomNavigation";
 import MonthSelector from "@/components/MonthSelector";
@@ -69,6 +71,7 @@ export default function DashboardPage() {
   const [includeCarriedOver, setIncludeCarriedOverState] = useState(true);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<any>(null);
+  const [debtItems, setDebtItems] = useState<DebtItemRow[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const initialMonthSetRef = useRef(false);
 
@@ -96,6 +99,7 @@ export default function DashboardPage() {
       } else if (profileData) {
         setProfile(profileData);
       }
+      setDebtItems(await fetchDebtItems(userId));
     } catch (error) {
       console.error("Error loading profile:", error);
     } finally {
@@ -275,10 +279,17 @@ export default function DashboardPage() {
   })();
 
   const totalDebt = profile?.total_liabilities ?? 0;
-  const monthlyDebtPayment = profile?.monthly_debt_payment ?? 0;
-  const initialDebtEstimate = totalDebt > 0 ? totalDebt * 1.2 : 0;
+  const debtOriginalTotal = debtItems.length > 0
+    ? debtItems.reduce((s, d) => s + Number(d.original), 0)
+    : totalDebt;
+  const debtItemsRemaining = debtItems.length > 0
+    ? debtItems.reduce((s, d) => s + Number(d.remaining), 0)
+    : totalDebt;
+  // target = ยอดหนี้เริ่มต้นรวม (จาก original หรือ total_liabilities ถ้าไม่มี debt items)
+  const debtGoalTarget = debtOriginalTotal > 0 ? debtOriginalTotal : totalDebt;
+  const debtPaidSoFar = Math.max(0, debtGoalTarget - debtItemsRemaining);
   const currentSaved = profile?.liquid_assets ?? 0;
-  const targetSavings = currentSaved > 0 ? Math.max(currentSaved * 2, 100000) : 200000;
+  const targetSavings = profile?.saving ?? 0;
 
   const isHealthy = financialStatus === "Healthy";
   const isWarning = financialStatus === "Warning";
@@ -370,12 +381,16 @@ export default function DashboardPage() {
           <h3 className="font-semibold text-foreground">เป้าหมายการเงิน</h3>
         </div>
         <div className="space-y-3">
-          <Link href="/savings-goal" className="block hover:opacity-95 transition-opacity">
-            <GoalCard goal={{ target: targetSavings, current: currentSaved, label: "เป้าออมเงิน" }} />
-          </Link>
-          <Link href="/debt-goal" className="block hover:opacity-95 transition-opacity">
-            <GoalCard goal={{ target: initialDebtEstimate, current: totalDebt > 0 ? initialDebtEstimate - totalDebt : 0, label: "เป้าปลดหนี้" }} />
-          </Link>
+              {targetSavings > 0 && (
+            <Link href="/savings-goal" className="block hover:opacity-95 transition-opacity">
+              <GoalCard goal={{ target: targetSavings, current: currentSaved, label: "เป้าออมเงิน" }} />
+            </Link>
+          )}
+          {debtGoalTarget > 0 && (
+            <Link href="/debt-goal" className="block hover:opacity-95 transition-opacity">
+              <GoalCard goal={{ target: debtGoalTarget, current: debtPaidSoFar, label: "เป้าปลดหนี้" }} />
+            </Link>
+          )}
         </div>
       </div>
 

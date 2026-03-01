@@ -84,6 +84,16 @@ export default function SettingsPage() {
       ])
       setCategoryBudgetsState(budgets)
       setDebtItems(debts)
+
+      // Auto-sync total_liabilities on load — use sum(remaining) so net worth = assets - current debt
+      if (debts.length > 0) {
+        const computedTotal = debts.reduce((s, d) => s + Number(d.remaining), 0)
+        const storedTotal = data?.total_liabilities ?? 0
+        if (computedTotal !== storedTotal) {
+          setProfile((prev) => ({ ...prev, total_liabilities: computedTotal }))
+          await supabase.from('profiles').update({ total_liabilities: computedTotal, updated_at: new Date().toISOString() }).eq('id', session.user.id)
+        }
+      }
     } catch (error) {
       console.error('Error:', error)
     } finally {
@@ -120,6 +130,16 @@ export default function SettingsPage() {
   const handleFieldBlur = () => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     saveProfile()
+  }
+
+  /** Recompute total_liabilities = sum(debt_items.remaining) and save to DB + local state */
+  const syncTotalLiabilities = async (userId: string) => {
+    const items = await fetchDebtItems(userId)
+    setDebtItems(items)
+    const total = items.reduce((s, d) => s + Number(d.remaining), 0)
+    setProfile((prev) => ({ ...prev, total_liabilities: total }))
+    profileRef.current = { ...profileRef.current, total_liabilities: total }
+    await supabase.from('profiles').update({ total_liabilities: total, updated_at: new Date().toISOString() }).eq('id', userId)
   }
 
   type NumericField =
@@ -262,7 +282,6 @@ export default function SettingsPage() {
               ['investment', 'เงินลงทุน (บาท)'],
               ['liquid_assets', 'ทรัพย์สินสภาพคล่อง (บาท)'],
               ['total_assets', 'ทรัพย์สินรวม (บาท)'],
-              ['total_liabilities', 'หนี้สินรวม (บาท)'],
             ] as [NumericField, string][]).map(([field, label]) => (
               <div key={field}>
                 <label className="block text-xs text-muted-foreground mb-1">{label}</label>
@@ -277,6 +296,15 @@ export default function SettingsPage() {
                 />
               </div>
             ))}
+            {/* หนี้สินรวม — read-only, computed from รายการหนี้แยกประเภท */}
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">
+                หนี้สินรวม (บาท) <span className="text-muted-foreground/60">คำนวณจากรายการหนี้ด้านล่าง</span>
+              </label>
+              <div className="w-full px-4 py-2 border border-border rounded-xl bg-secondary text-sm font-medium tabular-nums text-foreground">
+                ฿{formatCurrency(debtItems.length > 0 ? debtItems.reduce((s, d) => s + Number(d.remaining), 0) : (profile.total_liabilities ?? 0))}
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -293,6 +321,9 @@ export default function SettingsPage() {
                     <div>
                       <span className="text-sm font-medium text-foreground">{item.name}</span>
                       <div className="flex gap-2 text-xs text-muted-foreground">
+                        {item.original > 0 && item.original !== item.remaining && (
+                          <span>เริ่มต้น ฿{formatCurrency(Number(item.original))}</span>
+                        )}
                         <span>คงเหลือ ฿{formatCurrency(Number(item.remaining))}</span>
                         {item.interest_rate != null && <span>ดอกเบี้ย {item.interest_rate}%</span>}
                       </div>
@@ -311,7 +342,7 @@ export default function SettingsPage() {
                         onClick={async () => {
                           await deleteDebtItem(item.id)
                           const { data: { session } } = await supabase.auth.getSession()
-                          if (session) setDebtItems(await fetchDebtItems(session.user.id))
+                          if (session) await syncTotalLiabilities(session.user.id)
                         }}
                         className="p-1 text-muted-foreground hover:text-danger transition-colors"
                       >
@@ -330,6 +361,7 @@ export default function SettingsPage() {
                 e.preventDefault()
                 const form = e.currentTarget
                 const name = (form.querySelector('[name="debt_name"]') as HTMLInputElement)?.value?.trim()
+                const original = parseFloat((form.querySelector('[name="debt_original"]') as HTMLInputElement)?.value || '0')
                 const remaining = parseFloat((form.querySelector('[name="debt_remaining"]') as HTMLInputElement)?.value || '0')
                 const interestRate = (form.querySelector('[name="debt_rate"]') as HTMLInputElement)?.value
                 const priority = (form.querySelector('[name="debt_priority"]') as HTMLSelectElement)?.value as 'high' | 'normal'
@@ -338,12 +370,13 @@ export default function SettingsPage() {
                 if (!session) return
                 const created = await insertDebtItem(session.user.id, {
                   name,
+                  original: original > 0 ? original : remaining,
                   remaining,
                   interest_rate: interestRate ? parseFloat(interestRate) : undefined,
                   priority: priority === 'high' ? 'high' : 'normal',
                 })
                 if (created) {
-                  setDebtItems(await fetchDebtItems(session.user.id))
+                  await syncTotalLiabilities(session.user.id)
                   form.reset()
                 }
               }}
@@ -356,6 +389,14 @@ export default function SettingsPage() {
                 required
               />
               <div className="flex gap-2">
+                <input
+                  name="debt_original"
+                  type="number"
+                  min="0"
+                  step="1"
+                  placeholder="ยอดเริ่มต้น (ไม่บังคับ)"
+                  className="flex-1 px-4 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card"
+                />
                 <input
                   name="debt_remaining"
                   type="number"

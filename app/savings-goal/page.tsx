@@ -3,304 +3,557 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase, Profile } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
 import { Card, CardContent } from '@/components/ui/card'
-import { addMonths, format } from 'date-fns'
+import { ArrowLeftIcon, CheckCircleIcon, AlertTriangleIcon } from '@/components/icons'
+import {
+  computeGoalProjection,
+  computeRequiredSavingContribution,
+  calculateGoalHealth,
+  type GoalProjectionServiceResult,
+  type RequiredContributionServiceResult,
+  type GoalHealthResult,
+} from '@/src/application/savings/savings-goal-service'
+import type { GoalProjectionRow } from '@/src/domain/savings/savings-goal'
 
-/** Simple estimate: months to goal = (target - current) / monthlySaving */
-function monthsToGoal(targetAmount: number, currentSaved: number, monthlySaving: number): number {
-  const remaining = Math.max(0, targetAmount - currentSaved)
-  if (monthlySaving <= 0) return 0
-  return Math.ceil(remaining / monthlySaving)
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fmt = (n: number) => Math.round(n).toLocaleString('th-TH')
+const fmtDec = (n: number) =>
+  n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+function parsePositive(s: string): number {
+  const n = parseFloat(s.replace(/,/g, ''))
+  return isNaN(n) || n < 0 ? 0 : n
 }
 
-/** Progress color: hopeful blues → greens (0–100%) */
-function progressColor(percent: number): string {
-  if (percent < 33) return '#7dd3fc' // sky-300
-  if (percent < 66) return '#38bdf8' // sky-400
-  return '#22c55e' // green-500
-}
-
-/** Mock savings goals when no DB list exists */
-type SavingsGoalItem = { name: string; current: number; target: number }
-const MOCK_GOALS: SavingsGoalItem[] = [
-  { name: 'กองทุนฉุกเฉิน', current: 45000, target: 100000 },
-  { name: 'เที่ยวปลายปี', current: 12000, target: 50000 },
-  { name: 'ดาวน์บ้าน', current: 80000, target: 500000 },
-]
-
-/** Mock monthly savings growth (last 6 months, ascending) */
-function mockSavingsGrowth(
-  currentSaved: number,
-  monthlySaving: number
-): { month: string; saved: number }[] {
-  const n = 6
-  const arr: { month: string; saved: number }[] = []
-  let s = Math.max(0, currentSaved - monthlySaving * n)
-  for (let i = -n; i <= 0; i++) {
-    const d = addMonths(new Date(), i)
-    arr.push({ month: format(d, 'MMM yy'), saved: Math.round(s) })
-    s += monthlySaving
+/** Pick up to `max` evenly-spaced milestones, always including the final row. */
+function getMilestones(schedule: GoalProjectionRow[], max = 8): GoalProjectionRow[] {
+  if (schedule.length <= max) return schedule
+  const milestones: GoalProjectionRow[] = []
+  const step = Math.floor(schedule.length / (max - 1))
+  for (let i = step - 1; i < schedule.length - 1; i += step) {
+    if (milestones.length < max - 1) milestones.push(schedule[i])
   }
-  return arr
+  milestones.push(schedule[schedule.length - 1])
+  return milestones
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function SummaryCard({
+  label,
+  value,
+  sub,
+  highlight,
+}: {
+  label: string
+  value: string
+  sub?: string
+  highlight?: boolean
+}) {
+  return (
+    <Card className="shadow-card border-0">
+      <CardContent className="p-4">
+        <p className="text-xs text-muted-foreground mb-1">{label}</p>
+        <p className={`text-lg font-bold tabular-nums leading-tight ${highlight ? 'text-primary' : 'text-foreground'}`}>
+          {value}
+        </p>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+      </CardContent>
+    </Card>
+  )
+}
+
+function HealthIndicator({ health }: { health: GoalHealthResult }) {
+  const config = {
+    already_achieved: {
+      bg: 'bg-success/10 border-success/20',
+      text: 'text-success',
+      Icon: CheckCircleIcon,
+      label: 'บรรลุเป้าหมายแล้ว',
+      desc: 'ยินดีด้วย! คุณถึงเป้าแล้ว',
+    },
+    on_track: {
+      bg: 'bg-success/10 border-success/20',
+      text: 'text-success',
+      Icon: CheckCircleIcon,
+      label: 'กำลังดี — ตามแผน',
+      desc: 'ยอดออมปัจจุบันเพียงพอที่จะถึงเป้าในเวลาที่กำหนด',
+    },
+    slightly_behind: {
+      bg: 'bg-warning/10 border-warning/20',
+      text: 'text-warning',
+      Icon: AlertTriangleIcon,
+      label: 'เกือบถึงแผน',
+      desc: 'ออมเพิ่มเล็กน้อยก็จะถึงเป้าตามกำหนด',
+    },
+    off_track: {
+      bg: 'bg-danger/10 border-danger/20',
+      text: 'text-danger',
+      Icon: AlertTriangleIcon,
+      label: 'ต่ำกว่าแผน',
+      desc: 'ต้องเพิ่มยอดออมต่อเดือนเพื่อให้ถึงเป้าตามกำหนด',
+    },
+  }[health.status]
+
+  const { Icon } = config
+
+  return (
+    <Card className={`shadow-card border ${config.bg}`}>
+      <CardContent className="p-4">
+        <div className={`flex items-center gap-2 mb-3 ${config.text}`}>
+          <Icon size={16} />
+          <span className="font-semibold text-sm">{config.label}</span>
+        </div>
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-muted-foreground">ออมปัจจุบัน</span>
+            <span className="font-medium tabular-nums">
+              ฿{fmt(health.actualMonthlyContribution)}/เดือน
+            </span>
+          </div>
+          {health.status !== 'already_achieved' && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">ต้องออมอย่างน้อย</span>
+              <span className="font-medium tabular-nums">
+                ฿{fmtDec(health.requiredMonthlyContribution)}/เดือน
+              </span>
+            </div>
+          )}
+          {health.shortfallPerMonth > 0 && (
+            <div className={`flex justify-between font-semibold pt-1 border-t border-border ${config.text}`}>
+              <span>ต้องเพิ่มอีก</span>
+              <span className="tabular-nums">฿{fmt(health.shortfallPerMonth)}/เดือน</span>
+            </div>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground mt-2">{config.desc}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+function MilestoneTable({
+  schedule,
+  targetAmount,
+}: {
+  schedule: GoalProjectionRow[]
+  targetAmount: number
+}) {
+  const milestones = getMilestones(schedule)
+  const lastMonth = schedule[schedule.length - 1].month
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-secondary text-muted-foreground">
+            <th className="px-3 py-2 text-right font-medium">เดือนที่</th>
+            <th className="px-3 py-2 text-right font-medium">ยอดสะสม</th>
+            <th className="px-3 py-2 text-right font-medium">ดอกเบี้ย</th>
+            <th className="px-3 py-2 text-right font-medium">สัดส่วน</th>
+          </tr>
+        </thead>
+        <tbody>
+          {milestones.map((row) => {
+            const pct = Math.min(100, Math.round((row.balance / targetAmount) * 100))
+            const isGoal = row.month === lastMonth
+            return (
+              <tr
+                key={row.month}
+                className={`border-t border-border transition-colors ${
+                  isGoal ? 'bg-success/5' : 'hover:bg-secondary/50'
+                }`}
+              >
+                <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                  {row.month}
+                  {isGoal && <span className="ml-1 text-success">✓</span>}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums font-medium">
+                  ฿{fmt(row.balance)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-success">
+                  +฿{fmt(row.interest)}
+                </td>
+                <td className="px-3 py-2.5 text-right">
+                  <div className="flex items-center gap-1.5 justify-end">
+                    <div className="h-1.5 w-14 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary rounded-full transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="tabular-nums text-muted-foreground w-8 text-right">{pct}%</span>
+                  </div>
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function MotivationTable({
+  currentAmount,
+  targetAmount,
+  baseMonthlyContribution,
+  annualRate,
+  baseMonths,
+}: {
+  currentAmount: number
+  targetAmount: number
+  baseMonthlyContribution: number
+  annualRate: number
+  baseMonths: number
+}) {
+  const extras = [500, 1000, 2000]
+  const rows = extras
+    .map((extra) => {
+      const r = computeGoalProjection(
+        currentAmount,
+        targetAmount,
+        baseMonthlyContribution + extra,
+        annualRate,
+      )
+      return r.ok ? { extra, months: r.monthsToGoal, sooner: baseMonths - r.monthsToGoal } : null
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null && r.sooner > 0)
+
+  if (rows.length === 0) return null
+
+  return (
+    <Card className="shadow-card border-0">
+      <CardContent className="p-4">
+        <p className="text-sm font-semibold text-foreground mb-3">ถ้าออมเพิ่มทุกเดือน...</p>
+        <div className="space-y-2">
+          {rows.map(({ extra, sooner }) => (
+            <div
+              key={extra}
+              className="flex justify-between items-center py-2 px-3 rounded-xl bg-secondary text-sm"
+            >
+              <span className="text-foreground">+฿{fmt(extra)}/เดือน</span>
+              <span className="text-success font-medium">ถึงเป้าเร็วขึ้น {sooner} เดือน</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function SavingsGoalPage() {
   const router = useRouter()
-  const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Profile baseline (for health indicator comparison in mode 2)
+  const [profileSaving, setProfileSaving] = useState(0)
+
+  // Shared inputs
+  const [mode, setMode] = useState<'projection' | 'required'>('projection')
+  const [targetAmount, setTargetAmount] = useState('')
+  const [currentAmount, setCurrentAmount] = useState('')
+  const [annualRate, setAnnualRate] = useState('0')
+
+  // Mode-specific inputs
+  const [monthlyContribution, setMonthlyContribution] = useState('') // mode: projection
+  const [targetMonths, setTargetMonths] = useState('')               // mode: required
+
+  // Results
+  const [projResult, setProjResult] = useState<GoalProjectionServiceResult | null>(null)
+  const [reqResult, setReqResult] = useState<RequiredContributionServiceResult | null>(null)
+  const [healthResult, setHealthResult] = useState<GoalHealthResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  // ── Load profile → pre-fill inputs ────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-        router.push('/auth/login')
-        return
-      }
+      if (!session) { router.push('/auth/login'); return }
       const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
-      if (data) setProfile(data as Profile)
+      if (data) {
+        setCurrentAmount(String(data.liquid_assets ?? 0))
+        setTargetAmount(String(data.saving ?? 0))
+        setProfileSaving(data.saving ?? 0)
+      }
       setLoading(false)
     }
     load()
   }, [router])
 
+  function clearResults() {
+    setProjResult(null)
+    setReqResult(null)
+    setHealthResult(null)
+    setError(null)
+  }
+
+  function handleCalculate() {
+    clearResults()
+
+    const target = parsePositive(targetAmount)
+    const current = parsePositive(currentAmount)
+    const rate = parsePositive(annualRate)
+
+    if (target <= 0) { setError('กรุณากรอกยอดเงินเป้าหมาย'); return }
+    if (current >= target) { setError('ยอดออมปัจจุบันถึงเป้าหมายแล้ว'); return }
+
+    if (mode === 'projection') {
+      const contrib = parsePositive(monthlyContribution)
+      if (contrib <= 0 && rate <= 0) { setError('กรุณากรอกยอดออมต่อเดือน หรืออัตราดอกเบี้ย'); return }
+      const result = computeGoalProjection(current, target, contrib, rate)
+      if (!result.ok) { setError(result.error); return }
+      setProjResult(result)
+    } else {
+      const months = Math.round(parsePositive(targetMonths))
+      if (months <= 0) { setError('กรุณากรอกระยะเวลาเป้าหมาย (เดือน)'); return }
+      const result = computeRequiredSavingContribution(current, target, rate, months)
+      if (!result.ok) { setError(result.error); return }
+      setReqResult(result)
+      // Goal health: compare profile.saving vs required contribution
+      const health = calculateGoalHealth(current, target, profileSaving, rate, months)
+      setHealthResult(health)
+    }
+  }
+
+  const inputClass =
+    'w-full px-4 py-3 border border-border rounded-xl focus:ring-2 focus:ring-primary text-foreground bg-card text-sm placeholder:text-muted-foreground'
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background pb-16">
+      <div className="min-h-screen flex items-center justify-center bg-background pb-20">
         <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
       </div>
     )
   }
 
-  const currentSaved = profile?.liquid_assets ?? 0
-  const monthlySaving = profile?.saving ?? 0
-  const targetSavings = currentSaved > 0 ? Math.max(currentSaved * 2, 100000) : 200000
-  const progressPercent =
-    targetSavings > 0 ? Math.min(100, Math.round((currentSaved / targetSavings) * 100)) : 0
-
-  const monthsBase = monthsToGoal(targetSavings, currentSaved, monthlySaving || 1)
-  const goalDate =
-    monthlySaving > 0 && currentSaved < targetSavings
-      ? addMonths(new Date(), monthsBase)
-      : currentSaved >= targetSavings
-        ? new Date()
-        : null
-
-  const plannedMonthly = monthlySaving
-  const savedThisMonth = monthlySaving
-  const extraSavingsThisMonth = Math.max(0, savedThisMonth - plannedMonthly)
-  const statusMessage =
-    extraSavingsThisMonth > 0 && plannedMonthly > 0
-      ? 'คุณกำลังเก็บได้เร็วกว่าแผน'
-      : savedThisMonth >= plannedMonthly && plannedMonthly > 0
-        ? 'เก็บตามแผน'
-        : plannedMonthly > 0
-          ? 'เดือนนี้เก็บได้น้อยลง เป้าอาจช้ากว่าเดิม'
-          : 'เก็บตามแผน'
-
-  const goalItems = currentSaved > 0 || monthlySaving > 0 ? MOCK_GOALS : []
-  const growthData =
-    monthlySaving > 0 ? mockSavingsGrowth(currentSaved, monthlySaving) : []
-  const maxGrowth = Math.max(...growthData.map((d) => d.saved), 1)
+  // Active result (either mode)
+  const activeResult = projResult ?? reqResult
+  const targetNum = parsePositive(targetAmount)
 
   return (
-    <div className="min-h-screen bg-background pb-20">
-      <div className="bg-background border-b border-border sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <Link href="/dashboard" className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors shrink-0">
-              <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <h1 className="text-lg font-semibold text-foreground truncate">เป้าออมเงิน</h1>
-          </div>
+    <div className="animate-fade-in px-4 pt-4 pb-28">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-5">
+        <Link
+          href="/profile"
+          className="p-2 rounded-xl hover:bg-secondary transition-colors text-muted-foreground"
+        >
+          <ArrowLeftIcon size={18} />
+        </Link>
+        <h1 className="text-xl font-bold text-foreground">เป้าออมเงิน</h1>
+      </div>
+
+      {/* Mode tabs */}
+      <div className="flex gap-2 mb-5 p-1 bg-secondary rounded-xl">
+        {(['projection', 'required'] as const).map((m) => (
           <button
-            type="button"
-            onClick={async () => { await supabase.auth.signOut(); router.push('/auth/login'); router.refresh() }}
-            className="p-2 text-muted-foreground hover:text-foreground hover:bg-secondary rounded-lg transition-colors shrink-0"
-            title="ออกจากระบบ"
+            key={m}
+            onClick={() => { setMode(m); clearResults() }}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              mode === m
+                ? 'bg-card text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
           >
-            <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
-            </svg>
+            {m === 'projection' ? 'คำนวณระยะเวลา' : 'คำนวณยอดออม'}
           </button>
-        </div>
+        ))}
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-5 space-y-6">
-        {/* Section 1: Hero Summary */}
-        <Card className="shadow-card border-0">
-          <CardContent className="p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <svg className="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ภาพรวมเป้าหมาย</h2>
+      {/* Input card */}
+      <Card className="shadow-card border-0 mb-4">
+        <CardContent className="p-4 space-y-4">
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1.5">
+              ยอดเงินเป้าหมาย (฿) <span className="text-muted-foreground/60">เติมจากตั้งค่าเงินออม</span>
+            </label>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="เช่น 120000"
+              value={targetAmount}
+              onChange={(e) => { setTargetAmount(e.target.value); clearResults() }}
+              className={inputClass}
+              min="0"
+            />
           </div>
-          <div className="flex flex-col items-center">
-            <div className="relative w-40 h-40">
-              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="42" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
-                <circle
-                  cx="50"
-                  cy="50"
-                  r="42"
-                  fill="none"
-                  stroke={progressColor(progressPercent)}
-                  strokeWidth="8"
-                  strokeLinecap="round"
-                  strokeDasharray={`${progressPercent * 2.64} 264`}
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold text-foreground">{progressPercent}%</span>
-                <span className="text-xs text-muted-foreground">ถึงเป้าแล้ว</span>
-              </div>
+
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1.5">
+              ยอดออมปัจจุบัน (฿) <span className="text-muted-foreground/60">เติมจากทรัพย์สินสภาพคล่อง</span>
+            </label>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="เช่น 6000"
+              value={currentAmount}
+              onChange={(e) => { setCurrentAmount(e.target.value); clearResults() }}
+              className={inputClass}
+              min="0"
+            />
+          </div>
+
+          {mode === 'projection' ? (
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                ออมต่อเดือน (฿) <span className="text-muted-foreground/60">เติมจากตั้งค่าเงินออม</span>
+              </label>
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="เช่น 3000"
+                value={monthlyContribution}
+                onChange={(e) => { setMonthlyContribution(e.target.value); clearResults() }}
+                className={inputClass}
+                min="0"
+              />
             </div>
-            <p className="text-2xl font-bold text-foreground mt-4">
-              {currentSaved.toLocaleString('th-TH')} <span className="text-lg font-medium text-muted-foreground">บาท</span>
-            </p>
-            <p className="text-sm text-muted-foreground">เก็บได้แล้ว</p>
-            <p className="text-lg font-semibold text-success mt-1">
-              เป้า {targetSavings.toLocaleString('th-TH')} บาท
-            </p>
-            {goalDate && currentSaved < targetSavings && monthlySaving > 0 && (
-              <>
-                <p className="text-success font-semibold mt-2">
-                  คาดว่าจะถึงเป้า {format(goalDate, 'MMM yyyy')}
+          ) : (
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1.5">
+                ต้องการออมหมดใน (เดือน)
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                placeholder="เช่น 36"
+                value={targetMonths}
+                onChange={(e) => { setTargetMonths(e.target.value); clearResults() }}
+                className={inputClass}
+                min="1"
+                step="1"
+              />
+              {targetMonths && parsePositive(targetMonths) > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  ≈ {Math.floor(parsePositive(targetMonths) / 12)} ปี{' '}
+                  {Math.round(parsePositive(targetMonths)) % 12} เดือน
                 </p>
-                <p className="text-xs text-muted-foreground">ประมาณอีก {monthsBase} เดือน</p>
-              </>
-            )}
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs text-muted-foreground mb-1.5">
+              อัตราดอกเบี้ยต่อปี (%) <span className="text-muted-foreground/60">ใส่ 0 หากไม่มีดอก</span>
+            </label>
+            <input
+              type="number"
+              inputMode="decimal"
+              placeholder="เช่น 1.5"
+              value={annualRate}
+              onChange={(e) => { setAnnualRate(e.target.value); clearResults() }}
+              className={inputClass}
+              min="0"
+              max="100"
+              step="0.1"
+            />
           </div>
+
+          {error && (
+            <p className="text-sm text-danger bg-danger/10 rounded-xl px-4 py-3">{error}</p>
+          )}
+
+          <button
+            onClick={handleCalculate}
+            className="w-full py-3 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors"
+          >
+            คำนวณ
+          </button>
         </CardContent>
-        </Card>
+      </Card>
 
-        {/* Section 2: Status Card */}
-        <Card className="shadow-card border-0">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">สถานะเดือนนี้</h2>
-            </div>
-            <p className="text-lg font-semibold text-foreground">{statusMessage}</p>
-            {monthlySaving > 0 && (
-              <p className="text-sm text-muted-foreground mt-1">
-                เก็บเดือนละ {monthlySaving.toLocaleString('th-TH')} บาท
-              </p>
+      {/* ── Results ──────────────────────────────────────────────────────────── */}
+      {activeResult?.ok && (
+        <div className="space-y-4">
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 gap-3">
+            {reqResult?.ok && (
+              <SummaryCard
+                label="ยอดออมที่แนะนำ"
+                value={`฿${fmtDec(reqResult.requiredMonthlyContribution)}`}
+                sub="ต่อเดือน"
+                highlight
+              />
             )}
-          </CardContent>
-        </Card>
+            <SummaryCard
+              label="ระยะเวลา"
+              value={`${activeResult.monthsToGoal} เดือน`}
+              sub={`${Math.floor(activeResult.monthsToGoal / 12)} ปี ${activeResult.monthsToGoal % 12} เดือน`}
+              highlight={!reqResult}
+            />
+            <SummaryCard
+              label="ถึงเป้าภายใน"
+              value={activeResult.estimatedGoalDate}
+            />
+            <SummaryCard
+              label="ออมรวมทั้งหมด"
+              value={`฿${fmt(activeResult.totalContribution)}`}
+            />
+            <SummaryCard
+              label="ดอกเบี้ยที่ได้รับ"
+              value={`฿${fmt(activeResult.totalInterestEarned)}`}
+              sub={activeResult.totalInterestEarned > 0 ? 'กำไรจากเงินต้น' : 'ไม่มีดอกเบี้ย'}
+            />
+          </div>
 
-        {/* Section 3: Motivation Simulation */}
-        {monthlySaving > 0 && currentSaved < targetSavings && (
-          <Card className="shadow-card border-0">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">ถ้าเก็บเพิ่มทุกเดือน...</h2>
-              </div>
-              <div className="space-y-2">
-                {[500, 1000, 2000].map((extra) => {
-                  const newMonthly = monthlySaving + extra
-                  const monthsNew = monthsToGoal(targetSavings, currentSaved, newMonthly)
-                  const sooner = Math.max(0, monthsBase - monthsNew)
-                  return (
-                    <div
-                      key={extra}
-                      className="flex justify-between items-center py-2 px-3 rounded-xl bg-secondary"
-                    >
-                      <span className="text-foreground">+{extra.toLocaleString('th-TH')} บาท/เดือน</span>
-                      <span className="text-success font-medium">
-                        ถึงเป้าเร็วขึ้น {sooner} เดือน
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Section 4: Savings Progress Over Time */}
-        {growthData.length > 0 && (
-          <Card className="shadow-card border-0">
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><line x1="18" x2="18" y1="20" y2="10"/><line x1="12" x2="12" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="14"/></svg>
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">เงินออมเติบโตแต่ละเดือน</h2>
-              </div>
-              <div className="h-40 flex items-end gap-1">
-                {growthData.map((d, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                    <div
-                      className="w-full rounded-t bg-success/30 min-h-[4px] transition-all"
-                      style={{
-                        height: `${(d.saved / maxGrowth) * 120}px`,
-                      }}
-                    />
-                    <span className="text-xs text-muted-foreground truncate w-full text-center">
-                      {d.month}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2 text-center">ยอดสะสมโดยประมาณ</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Section 5: Multiple Savings Goals */}
-        <Card className="shadow-card border-0">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-              <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">เป้าหมายออมเงิน</h2>
-            </div>
-            {goalItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                ยังไม่มีข้อมูลเป้าหมาย ตั้งค่ารายได้และเงินออมต่อเดือนในหน้าโปรไฟล์
-              </p>
-            ) : (
-              <>
-                <p className="text-xs text-muted-foreground mb-2">
-                  ตัวอย่างเป้าหมาย (ข้อมูลจริงจากโปรไฟล์ = ยอดรวมด้านบน)
-                </p>
-                <div className="space-y-3">
-                  {goalItems.map((item, i) => {
-                    const pct =
-                      item.target > 0
-                        ? Math.min(100, Math.round((item.current / item.target) * 100))
-                        : 0
+          {/* Interest ratio bar (show only when there is interest) */}
+          {activeResult.totalInterestEarned > 0 && (
+            <Card className="shadow-card border-0">
+              <CardContent className="p-4">
+                <p className="text-xs text-muted-foreground mb-2">สัดส่วนเงินต้น vs ดอกเบี้ย</p>
+                <div className="flex h-3 rounded-full overflow-hidden bg-muted">
+                  {(() => {
+                    const totalAmt = activeResult.totalContribution + activeResult.totalInterestEarned
+                    const interestPct = Math.round((activeResult.totalInterestEarned / totalAmt) * 100)
                     return (
-                      <div
-                        key={i}
-                        className="flex flex-col gap-2 p-3 rounded-xl bg-secondary border border-border"
-                      >
-                        <div className="flex justify-between items-start">
-                          <span className="font-medium text-foreground">{item.name}</span>
-                          <span className="text-sm font-semibold text-success">{pct}%</span>
-                        </div>
-                        <div className="flex justify-between text-sm text-muted-foreground">
-                          <span>{item.current.toLocaleString('th-TH')} / {item.target.toLocaleString('th-TH')} บาท</span>
-                        </div>
-                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-success transition-all"
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
+                      <>
+                        <div className="bg-primary" style={{ width: `${100 - interestPct}%` }} />
+                        <div className="bg-success" style={{ width: `${interestPct}%` }} />
+                      </>
                     )
-                  })}
+                  })()}
                 </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+                <div className="flex justify-between mt-1.5 text-[10px]">
+                  <span className="text-primary font-medium">
+                    เงินออม ฿{fmt(activeResult.totalContribution)}
+                  </span>
+                  <span className="text-success font-medium">
+                    ดอกเบี้ย ฿{fmt(activeResult.totalInterestEarned)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-        <div className="h-4" />
-      </div>
+          {/* Goal health (mode 2 only) */}
+          {healthResult && <HealthIndicator health={healthResult} />}
+
+          {/* Motivation: "what if you save more" (mode 1 only) */}
+          {projResult?.ok && (
+            <MotivationTable
+              currentAmount={parsePositive(currentAmount)}
+              targetAmount={targetNum}
+              baseMonthlyContribution={parsePositive(monthlyContribution)}
+              annualRate={parsePositive(annualRate)}
+              baseMonths={projResult.monthsToGoal}
+            />
+          )}
+
+          {/* Milestone table */}
+          <div>
+            <p className="text-sm font-semibold text-foreground mb-2">
+              ตารางเป้าหมาย ({activeResult.monthsToGoal} งวด)
+            </p>
+            <MilestoneTable schedule={activeResult.schedule} targetAmount={targetNum} />
+          </div>
+        </div>
+      )}
 
       <BottomNavigation />
     </div>

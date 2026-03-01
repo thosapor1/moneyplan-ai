@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { supabase, Profile, fetchDebtItems } from '@/lib/supabase'
+import { supabase, Profile, fetchDebtItems, type DebtItemRow } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
 import FormattedAnalysis from '@/components/FormattedAnalysis'
 import { Card, CardContent } from '@/components/ui/card'
@@ -39,7 +39,7 @@ export default function DebtGoalPage() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [debtItems, setDebtItems] = useState<{ id: string; name: string; remaining: number; interest_rate?: number; priority?: 'high' | 'normal' }[]>([])
+  const [debtItems, setDebtItems] = useState<DebtItemRow[]>([])
   const [adviceLoading, setAdviceLoading] = useState(false)
   const [advice, setAdvice] = useState<string | null>(null)
   const [adviceError, setAdviceError] = useState<string | null>(null)
@@ -73,18 +73,28 @@ export default function DebtGoalPage() {
   const extraPaymentThisMonth = 0
   const totalPaymentThisMonth = monthlyPayment + extraPaymentThisMonth
 
-  const initialDebtMock = totalDebt > 0 ? Math.round(totalDebt * 1.15) : 0
-  const progressPercent = initialDebtMock > 0
-    ? Math.min(100, Math.round(((initialDebtMock - totalDebt) / initialDebtMock) * 100))
+  // Single source of truth: sum(original) and sum(remaining) from debt_items
+  const debtGoalTarget = debtItems.length > 0
+    ? debtItems.reduce((s, d) => s + Number(d.original), 0)
+    : totalDebt
+  const debtItemsRemaining = debtItems.length > 0
+    ? debtItems.reduce((s, d) => s + Number(d.remaining), 0)
+    : totalDebt
+  const debtPaidSoFar = Math.max(0, debtGoalTarget - debtItemsRemaining)
+  const progressPercent = debtGoalTarget > 0
+    ? Math.min(100, Math.round((debtPaidSoFar / debtGoalTarget) * 100))
     : 0
 
-  const monthsBase = monthsToClear(totalDebt, monthlyPayment || 1)
+  // Use remaining from items if available, else fall back to profile total_liabilities
+  const remainingDebt = debtItems.length > 0 ? debtItemsRemaining : totalDebt
+  const monthsBase = monthsToClear(remainingDebt, monthlyPayment || 1)
   const payoffDate = monthlyPayment > 0
     ? addMonths(new Date(), monthsBase)
     : null
 
   const extraThisMonth = Math.max(0, totalPaymentThisMonth - monthlyPayment)
   const daysEarlier = monthlyPayment > 0 ? Math.round((extraThisMonth / monthlyPayment) * 30) : 0
+  const trendData = remainingDebt > 0 && monthlyPayment > 0 ? mockTrend(remainingDebt, monthlyPayment) : []
   const statusMessage =
     extraThisMonth > 0 && monthlyPayment > 0
       ? `เร็วขึ้นประมาณ ${daysEarlier} วัน`
@@ -92,7 +102,6 @@ export default function DebtGoalPage() {
         ? 'คุณกำลังทำได้ดี'
         : 'ตามแผนปกติ'
 
-  const trendData = totalDebt > 0 && monthlyPayment > 0 ? mockTrend(totalDebt, monthlyPayment) : []
   const maxTrend = Math.max(...trendData.map((d) => d.remaining), 1)
 
   const fetchAdvice = async () => {
@@ -176,9 +185,14 @@ export default function DebtGoalPage() {
               </div>
             </div>
             <p className="text-2xl font-bold text-foreground mt-4">
-              {totalDebt.toLocaleString('th-TH')} <span className="text-lg font-medium text-muted-foreground">บาท</span>
+              {remainingDebt.toLocaleString('th-TH')} <span className="text-lg font-medium text-muted-foreground">บาท</span>
             </p>
-            <p className="text-sm text-muted-foreground">ยอดหนี้คงเหลือ</p>
+            <p className="text-sm text-muted-foreground">
+              ยอดหนี้คงเหลือ
+              {debtPaidSoFar > 0 && (
+                <span className="ml-2 text-success">· ผ่อนไปแล้ว ฿{debtPaidSoFar.toLocaleString('th-TH')}</span>
+              )}
+            </p>
             {payoffDate && monthlyPayment > 0 && (
               <>
                 <p className="text-success font-semibold mt-2">
@@ -208,7 +222,7 @@ export default function DebtGoalPage() {
         </Card>
 
         {/* Section 3: Motivation Simulation */}
-        {monthlyPayment > 0 && totalDebt > 0 && (
+        {monthlyPayment > 0 && remainingDebt > 0 && (
           <Card className="shadow-card border-0">
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-3">
@@ -218,7 +232,7 @@ export default function DebtGoalPage() {
               <div className="space-y-2">
                 {[500, 1000, 2000].map((extra) => {
                   const newMonthly = monthlyPayment + extra
-                  const monthsNew = monthsToClear(totalDebt, newMonthly)
+                  const monthsNew = monthsToClear(remainingDebt, newMonthly)
                   const earlier = Math.max(0, monthsBase - monthsNew)
                   return (
                     <div
@@ -250,21 +264,33 @@ export default function DebtGoalPage() {
               </p>
             ) : (
               <div className="space-y-3">
-                {debtItems.map((item) => (
-                  <div key={item.id} className="flex flex-col gap-1 p-3 rounded-xl bg-secondary border border-border">
-                    <div className="flex justify-between items-start">
-                      <span className="font-medium text-foreground">{item.name}</span>
-                      {item.priority === 'high' && (
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-warning/20 text-warning">ควรโปะก่อน</span>
+                {debtItems.map((item) => {
+                  const orig = Number(item.original) || Number(item.remaining)
+                  const rem = Number(item.remaining)
+                  const paid = Math.max(0, orig - rem)
+                  const pct = orig > 0 ? Math.min(100, Math.round((paid / orig) * 100)) : 0
+                  return (
+                    <div key={item.id} className="flex flex-col gap-2 p-3 rounded-xl bg-secondary border border-border">
+                      <div className="flex justify-between items-start">
+                        <span className="font-medium text-foreground">{item.name}</span>
+                        {item.priority === 'high' && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-warning/20 text-warning">ควรโปะก่อน</span>
+                        )}
+                      </div>
+                      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-success rounded-full transition-all" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>คงเหลือ ฿{rem.toLocaleString('th-TH')} / ฿{orig.toLocaleString('th-TH')}</span>
+                        <span className="text-success font-medium">{pct}%</span>
+                      </div>
+                      {item.interest_rate != null && (
+                        <span className="text-xs text-muted-foreground">ดอกเบี้ย ~{item.interest_rate}%/ปี</span>
                       )}
                     </div>
-                    <div className="flex justify-between text-sm text-muted-foreground">
-                      <span>คงเหลือ {Number(item.remaining).toLocaleString('th-TH')} บาท</span>
-                      {item.interest_rate != null && <span>ดอกเบี้ย ~{item.interest_rate}%/ปี</span>}
-                    </div>
-                  </div>
-                ))}
-                <p className="text-xs text-muted-foreground text-center pt-1">แก้ไขรายการได้ที่หน้า <Link href="/profile" className="text-primary underline">โปรไฟล์</Link></p>
+                  )
+                })}
+                <p className="text-xs text-muted-foreground text-center pt-1">แก้ไขรายการได้ที่หน้า <Link href="/settings" className="text-primary underline">ตั้งค่า</Link></p>
               </div>
             )}
           </CardContent>

@@ -70,7 +70,14 @@ export default function ProfilePage() {
         setTotalDebtPaymentFromTransactions(undefined)
       }
 
-      setDebtItems(await fetchDebtItems(session.user.id))
+      const debts = await fetchDebtItems(session.user.id)
+      setDebtItems(debts)
+      // Sync total_liabilities = sum(remaining) so FinancialAnalysis shows correct net worth
+      if (debts.length > 0) {
+        const computedLiabilities = debts.reduce((s, d) => s + Number(d.remaining), 0)
+        setProfile((prev) => ({ ...prev, total_liabilities: computedLiabilities }))
+        await supabase.from('profiles').update({ total_liabilities: computedLiabilities, updated_at: new Date().toISOString() }).eq('id', session.user.id)
+      }
     } catch (error) { console.error('Error:', error) } finally { setLoading(false) }
   }, [router])
 
@@ -119,11 +126,15 @@ export default function ProfilePage() {
   const totalDebt = profile.total_liabilities ?? 0
   const currentSaved = profile.liquid_assets ?? 0
   const emergencyTarget = monthlyExpenses > 0 ? monthlyExpenses * 6 : 100000
-  const debtItemsTotal = debtItems.length > 0
+  const savingsGoalTarget = profile.saving ?? 0
+  const debtOriginalTotal = debtItems.length > 0
+    ? debtItems.reduce((s, d) => s + Number(d.original), 0)
+    : totalDebt
+  const debtRemainingTotal = debtItems.length > 0
     ? debtItems.reduce((s, d) => s + Number(d.remaining), 0)
     : totalDebt
-  const debtPaidSoFar = debtItems.length > 0 && totalDebt > debtItemsTotal
-    ? totalDebt - debtItemsTotal
+  const debtPaidSoFar = debtOriginalTotal > 0
+    ? Math.max(0, debtOriginalTotal - debtRemainingTotal)
     : 0
 
   const strengths: string[] = []
@@ -210,8 +221,11 @@ export default function ProfilePage() {
         <h3 className="font-semibold text-foreground mb-3">เป้าหมายการเงิน</h3>
         <div className="grid grid-cols-2 gap-3">
           <RingGoal label="เงินฉุกเฉิน" current={currentSaved} target={emergencyTarget} />
-          {totalDebt > 0 && debtPaidSoFar > 0 && (
-            <RingGoal label="ปลดหนี้" current={debtPaidSoFar} target={totalDebt} />
+          {savingsGoalTarget > 0 && (
+            <RingGoal label="เป้าออมเงิน" current={currentSaved} target={savingsGoalTarget} />
+          )}
+          {debtOriginalTotal > 0 && debtPaidSoFar > 0 && (
+            <RingGoal label="ปลดหนี้" current={debtPaidSoFar} target={debtOriginalTotal} />
           )}
         </div>
         <div className="flex flex-wrap gap-2 mt-3">
@@ -235,12 +249,12 @@ export default function ProfilePage() {
                 <span className="text-sm font-medium">หนี้สินรวม</span>
                 <span className="text-sm font-bold tabular-nums">฿{formatCurrency(totalDebt)}</span>
               </div>
-              {totalDebt > 0 && actualDebtPayment > 0 && (
+              {debtOriginalTotal > 0 && actualDebtPayment > 0 && (
                 <>
-                  <Progress value={Math.min(100, Math.round((debtPaidSoFar / totalDebt) * 100))} className="h-2 mb-2" />
+                  <Progress value={Math.min(100, Math.round((debtPaidSoFar / debtOriginalTotal) * 100))} className="h-2 mb-2" />
                   <div className="flex justify-between text-xs text-muted-foreground">
                     <span>จ่ายรายเดือน ฿{formatCurrency(actualDebtPayment)}</span>
-                    <span>คาดหมด ~{Math.ceil(debtItemsTotal / actualDebtPayment)} เดือน</span>
+                    <span>คาดหมด ~{Math.ceil(debtRemainingTotal / actualDebtPayment)} เดือน</span>
                   </div>
                 </>
               )}

@@ -95,6 +95,7 @@ export type DebtItemRow = {
   id: string
   user_id: string
   name: string
+  original: number
   remaining: number
   interest_rate?: number
   priority?: 'high' | 'normal'
@@ -181,6 +182,7 @@ export async function fetchDebtItems(userId: string): Promise<DebtItemRow[]> {
     id: row.id,
     user_id: row.user_id,
     name: String(row.name ?? ''),
+    original: Number(row.original) || Number(row.remaining) || 0,
     remaining: Number(row.remaining) ?? 0,
     interest_rate: row.interest_rate != null ? Number(row.interest_rate) : undefined,
     priority: row.priority === 'high' || row.priority === 'normal' ? row.priority : undefined,
@@ -192,7 +194,7 @@ export async function fetchDebtItems(userId: string): Promise<DebtItemRow[]> {
 
 export async function insertDebtItem(
   userId: string,
-  item: { name: string; remaining: number; interest_rate?: number; priority?: 'high' | 'normal' }
+  item: { name: string; original: number; remaining: number; interest_rate?: number; priority?: 'high' | 'normal' }
 ): Promise<DebtItemRow | null> {
   const existing = await fetchDebtItems(userId)
   const { data, error } = await supabase
@@ -200,6 +202,7 @@ export async function insertDebtItem(
     .insert({
       user_id: userId,
       name: item.name.trim(),
+      original: Number(item.original) || 0,
       remaining: Number(item.remaining) || 0,
       interest_rate: item.interest_rate != null ? Number(item.interest_rate) : null,
       priority: item.priority ?? null,
