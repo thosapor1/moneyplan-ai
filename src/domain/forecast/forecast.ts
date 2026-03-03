@@ -26,12 +26,12 @@ export const FIXED_EXPENSE_CATEGORIES = [
 ] as const
 
 export const VARIABLE_EXPENSE_CATEGORIES = [
-  'อาหาร',
-  'เดินทาง',
+  'ค่าอาหาร',
+  'ค่าเดินทาง',
   'ช้อปปิ้ง',
-  'สุขภาพ',
-  'บันเทิง',
-  'การศึกษา',
+  'ค่าสุขภาพ',
+  'ค่าบันเทิง',
+  'ค่าการศึกษา',
   'อื่นๆ',
 ] as const
 
@@ -46,7 +46,13 @@ const VARIABLE_SET = new Set<string>(VARIABLE_EXPENSE_CATEGORIES)
  * Keeps forecast module in sync with finance module aliases.
  */
 const CATEGORY_ALIASES: Record<string, string> = {
-  'ค่าเดินทาง': 'เดินทาง',
+  // Legacy names without ค่า prefix -> Current canonical names
+  'อาหาร': 'ค่าอาหาร',
+  'เดินทาง': 'ค่าเดินทาง',
+  'สุขภาพ': 'ค่าสุขภาพ',
+  'บันเทิง': 'ค่าบันเทิง',
+  'การศึกษา': 'ค่าการศึกษา',
+  // Other aliases
   'ที่พัก/ค่าเช่า': 'บิล/ค่าใช้จ่าย',
   'สาธารณูปโภค': 'บิล/ค่าใช้จ่าย',
   'โทรศัพท์/อินเทอร์เน็ต': 'บิล/ค่าใช้จ่าย',

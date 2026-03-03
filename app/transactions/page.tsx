@@ -122,6 +122,8 @@ export default function TransactionsPage() {
   loadMonthTransactionsRef.current = loadMonthTransactions
   const selectedMonthRef = useRef(selectedMonth)
   selectedMonthRef.current = selectedMonth
+  const monthEndDayRef = useRef(monthEndDay)
+  monthEndDayRef.current = monthEndDay
   useEffect(() => {
     if (typeof window === 'undefined') return
     const onFocus = async () => {
@@ -129,7 +131,7 @@ export default function TransactionsPage() {
       if (session) {
         const budgets = await fetchCategoryBudgets(session.user.id)
         setCategoryBudgetsState(budgets)
-        loadMonthTransactionsRef.current(selectedMonthRef.current, 0)
+        loadMonthTransactionsRef.current(selectedMonthRef.current, monthEndDayRef.current)
       }
     }
     window.addEventListener('focus', onFocus)

@@ -181,7 +181,13 @@ export function getTodayExpense(transactions: TransactionLike[], todayStr: strin
  * This ensures budget lookups match even when old transactions exist.
  */
 const CATEGORY_ALIASES: Record<string, string> = {
-  'ค่าเดินทาง': 'เดินทาง',
+  // Legacy names without ค่า prefix -> Current canonical names
+  'อาหาร': 'ค่าอาหาร',
+  'เดินทาง': 'ค่าเดินทาง',
+  'สุขภาพ': 'ค่าสุขภาพ',
+  'บันเทิง': 'ค่าบันเทิง',
+  'การศึกษา': 'ค่าการศึกษา',
+  // Other aliases
   'ที่พัก/ค่าเช่า': 'บิล/ค่าใช้จ่าย',
   'สาธารณูปโภค': 'บิล/ค่าใช้จ่าย',
   'โทรศัพท์/อินเทอร์เน็ต': 'บิล/ค่าใช้จ่าย',

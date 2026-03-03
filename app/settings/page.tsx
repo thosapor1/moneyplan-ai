@@ -10,6 +10,7 @@ import {
   saveCategoryBudgets,
   fetchDebtItems,
   insertDebtItem,
+  updateDebtItem,
   deleteDebtItem,
   type DebtItemRow,
 } from '@/lib/supabase'
@@ -46,6 +47,10 @@ export default function SettingsPage() {
   const [numericInputs, setNumericInputs] = useState<Partial<Record<keyof Profile, string>>>({})
   const [categoryBudgets, setCategoryBudgetsState] = useState<Record<string, number>>({})
   const [debtItems, setDebtItems] = useState<DebtItemRow[]>([])
+  const [editingDebtId, setEditingDebtId] = useState<string | null>(null)
+  const [editingDebtValues, setEditingDebtValues] = useState<{ name: string; remaining: number; interest_rate: number | null; priority: 'high' | 'normal' }>({
+    name: '', remaining: 0, interest_rate: null, priority: 'normal',
+  })
 
   useEffect(() => { profileRef.current = profile }, [profile])
 
@@ -195,7 +200,7 @@ export default function SettingsPage() {
 
       {/* Salary Day — defines budget cycle boundary */}
       <div className="mb-6">
-        <h3 className="font-semibold text-foreground mb-3">วงรอบงวดบัญชี</h3>
+        <h3 className="font-semibold text-foreground mb-3">กำหนดงวดบัญชีของคุณ</h3>
         <Card className="shadow-card border-0">
           <CardContent className="p-4">
             <label className="block text-xs text-muted-foreground mb-2">วันที่รับเงินเดือน (กำหนดงวดบัญชี)</label>
@@ -233,7 +238,7 @@ export default function SettingsPage() {
 
       {/* Category Budgets */}
       <div className="mb-6">
-        <h3 className="font-semibold text-foreground mb-3">งบรายจ่ายต่อหมวดต่องวด</h3>
+        <h3 className="font-semibold text-foreground mb-3">งบประมาณต่อหมวดหมู่</h3>
         <Card className="shadow-card border-0">
           <CardContent className="p-0">
             {EXPENSE_CATEGORIES.map((cat, i) => {
@@ -271,7 +276,7 @@ export default function SettingsPage() {
 
       {/* Budget Targets */}
       <div className="mb-6">
-        <h3 className="font-semibold text-foreground mb-3">ตั้งค่ารายรับรายจ่าย</h3>
+        <h3 className="font-semibold text-foreground mb-3">ข้อมูลทรัพย์สินและหนี้สิน</h3>
         <Card className="shadow-card border-0">
           <CardContent className="p-4 space-y-3">
             {([
@@ -311,46 +316,137 @@ export default function SettingsPage() {
 
       {/* Debt Items */}
       <div className="mb-6">
-        <h3 className="font-semibold text-foreground mb-3">รายการหนี้แยกประเภท</h3>
+        <h3 className="font-semibold text-foreground mb-3">บริหารรายการหนี้ที่ต้องชำระ</h3>
         <Card className="shadow-card border-0">
           <CardContent className="p-4">
             {debtItems.length > 0 && (
               <div className="space-y-2 mb-4">
                 {debtItems.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between p-3 rounded-xl bg-secondary border border-border">
-                    <div>
-                      <span className="text-sm font-medium text-foreground">{item.name}</span>
-                      <div className="flex gap-2 text-xs text-muted-foreground">
-                        {item.original > 0 && item.original !== item.remaining && (
-                          <span>เริ่มต้น ฿{formatCurrency(Number(item.original))}</span>
-                        )}
-                        <span>คงเหลือ ฿{formatCurrency(Number(item.remaining))}</span>
-                        {item.interest_rate != null && <span>ดอกเบี้ย {item.interest_rate}%</span>}
+                  <div key={item.id}>
+                    {editingDebtId === item.id ? (
+                      // Edit Mode
+                      <div className="p-3 rounded-xl bg-primary/5 border border-primary/20 space-y-2">
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">ชื่อหนี้</label>
+                          <input
+                            type="text"
+                            value={editingDebtValues.name}
+                            onChange={(e) => setEditingDebtValues({ ...editingDebtValues, name: e.target.value })}
+                            className="w-full px-3 py-2 border border-border rounded-lg text-foreground text-sm bg-card"
+                          />
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="block text-xs text-muted-foreground mb-1">คงเหลือ</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={editingDebtValues.remaining}
+                              onChange={(e) => setEditingDebtValues({ ...editingDebtValues, remaining: parseFloat(e.target.value) || 0 })}
+                              className="w-full px-3 py-2 border border-border rounded-lg text-foreground text-sm bg-card"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-muted-foreground mb-1">ดอกเบี้ย %</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              value={editingDebtValues.interest_rate ?? ''}
+                              onChange={(e) => setEditingDebtValues({ ...editingDebtValues, interest_rate: e.target.value ? parseFloat(e.target.value) : null })}
+                              className="w-full px-3 py-2 border border-border rounded-lg text-foreground text-sm bg-card"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-muted-foreground mb-1">ลำดับความสำคัญ</label>
+                            <select
+                              value={editingDebtValues.priority}
+                              onChange={(e) => setEditingDebtValues({ ...editingDebtValues, priority: e.target.value as 'high' | 'normal' })}
+                              className="w-full px-3 py-2 border border-border rounded-lg text-foreground text-sm bg-card"
+                            >
+                              <option value="normal">ปกติ</option>
+                              <option value="high">สำคัญ</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async () => {
+                              await updateDebtItem(item.id, {
+                                name: editingDebtValues.name,
+                                remaining: editingDebtValues.remaining,
+                                interest_rate: editingDebtValues.interest_rate,
+                                priority: editingDebtValues.priority,
+                              })
+                              const { data: { session } } = await supabase.auth.getSession()
+                              if (session) await syncTotalLiabilities(session.user.id)
+                              setEditingDebtId(null)
+                            }}
+                            className="flex-1 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+                          >
+                            บันทึก
+                          </button>
+                          <button
+                            onClick={() => setEditingDebtId(null)}
+                            className="flex-1 py-2 bg-secondary text-secondary-foreground text-sm font-medium rounded-lg hover:bg-secondary/80 transition-colors"
+                          >
+                            ยกเลิก
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {item.priority === 'high' && (
-                        <Badge variant="warning" className="text-[10px]">ควรโปะก่อน</Badge>
-                      )}
-                      <Link
-                        href={`/debt-calculator?principal=${item.remaining}&rate=${item.interest_rate ?? 0}&name=${encodeURIComponent(item.name)}`}
-                        className="px-2 py-1 text-[10px] text-primary font-medium hover:bg-primary/10 rounded-lg transition-colors"
-                      >
-                        คำนวณ
-                      </Link>
-                      <button
-                        onClick={async () => {
-                          await deleteDebtItem(item.id)
-                          const { data: { session } } = await supabase.auth.getSession()
-                          if (session) await syncTotalLiabilities(session.user.id)
-                        }}
-                        className="p-1 text-muted-foreground hover:text-danger transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
-                    </div>
+                    ) : (
+                      // View Mode
+                      <div className="flex items-center justify-between p-3 rounded-xl bg-secondary border border-border">
+                        <div>
+                          <span className="text-sm font-medium text-foreground">{item.name}</span>
+                          <div className="flex gap-2 text-xs text-muted-foreground">
+                            {item.original > 0 && item.original !== item.remaining && (
+                              <span>เริ่มต้น ฿{formatCurrency(Number(item.original))}</span>
+                            )}
+                            <span>คงเหลือ ฿{formatCurrency(Number(item.remaining))}</span>
+                            {item.interest_rate != null && <span>ดอกเบี้ย {item.interest_rate}%</span>}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {item.priority === 'high' && (
+                            <Badge variant="warning" className="text-[10px]">ควรโปะก่อน</Badge>
+                          )}
+                          <button
+                            onClick={() => {
+                              setEditingDebtValues({
+                                name: item.name,
+                                remaining: Number(item.remaining),
+                                interest_rate: item.interest_rate ?? null,
+                                priority: item.priority ?? 'normal',
+                              })
+                              setEditingDebtId(item.id)
+                            }}
+                            className="px-2 py-1 text-[10px] text-primary font-medium hover:bg-primary/10 rounded-lg transition-colors"
+                          >
+                            แก้ไข
+                          </button>
+                          <Link
+                            href={`/debt-calculator?principal=${item.remaining}&rate=${item.interest_rate ?? 0}&name=${encodeURIComponent(item.name)}`}
+                            className="px-2 py-1 text-[10px] text-primary font-medium hover:bg-primary/10 rounded-lg transition-colors"
+                          >
+                            คำนวณ
+                          </Link>
+                          <button
+                            onClick={async () => {
+                              await deleteDebtItem(item.id)
+                              const { data: { session } } = await supabase.auth.getSession()
+                              if (session) await syncTotalLiabilities(session.user.id)
+                            }}
+                            className="p-1 text-muted-foreground hover:text-danger transition-colors"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -388,32 +484,41 @@ export default function SettingsPage() {
                 className="w-full px-4 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card"
                 required
               />
-              <div className="flex gap-2">
-                <input
-                  name="debt_original"
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="ยอดเริ่มต้น (ไม่บังคับ)"
-                  className="flex-1 px-4 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card"
-                />
-                <input
-                  name="debt_remaining"
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="ยอดคงเหลือ"
-                  className="flex-1 px-4 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card"
-                  required
-                />
-                <input
-                  name="debt_rate"
-                  type="number"
-                  min="0"
-                  step="0.1"
-                  placeholder="ดอกเบี้ย %"
-                  className="w-24 px-4 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card"
-                />
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">เริ่มต้น</label>
+                  <input
+                    name="debt_original"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0"
+                    className="w-full px-3 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">คงเหลือ</label>
+                  <input
+                    name="debt_remaining"
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="0"
+                    className="w-full px-3 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-muted-foreground mb-1">ดอกเบี้ย %</label>
+                  <input
+                    name="debt_rate"
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    placeholder="0"
+                    className="w-full px-3 py-2 border border-border rounded-xl text-foreground text-sm placeholder:text-muted-foreground bg-card"
+                  />
+                </div>
               </div>
               <select
                 name="debt_priority"

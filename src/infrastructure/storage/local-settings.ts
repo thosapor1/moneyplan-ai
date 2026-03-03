@@ -25,13 +25,13 @@ export const INCLUDE_CARRIED_OVER_KEY = 'moneyplan_include_carried_over'
  * (Used for UI filters, budgets, and transaction categorization.)
  */
 export const EXPENSE_CATEGORIES = [
-  'อาหาร',
-  'เดินทาง',
+  'ค่าอาหาร',
+  'ค่าเดินทาง',
   'ช้อปปิ้ง',
   'บิล/ค่าใช้จ่าย',
-  'สุขภาพ',
-  'บันเทิง',
-  'การศึกษา',
+  'ค่าสุขภาพ',
+  'ค่าบันเทิง',
+  'ค่าการศึกษา',
   'ผ่อนชำระหนี้',
   'ออมเงิน',
   'ลงทุน',
