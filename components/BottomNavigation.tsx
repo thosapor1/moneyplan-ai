@@ -9,7 +9,7 @@ const navItems = [
   { href: '/transactions', label: 'รายรับรายจ่าย', Icon: ReceiptIcon },
   { href: '/profile', label: 'สุขภาพการเงิน', Icon: HeartPulseIcon },
   { href: '/forecasts', label: 'แผน 12 เดือน', Icon: CalendarIcon },
-  { href: '/settings', label: 'ตั้งค่า', Icon: SettingsIcon },
+  { href: '/settings', label: 'ตั้งค่าระบบ', Icon: SettingsIcon },
 ]
 
 export default function BottomNavigation() {

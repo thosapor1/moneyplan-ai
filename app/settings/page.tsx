@@ -15,6 +15,7 @@ import {
   type DebtItemRow,
 } from '@/lib/supabase'
 import BottomNavigation from '@/components/BottomNavigation'
+import { SettingsIcon } from '@/components/icons'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { EXPENSE_CATEGORIES } from '@/lib/storage'
@@ -188,8 +189,11 @@ export default function SettingsPage() {
 
   return (
     <div className="animate-fade-in px-4 pt-4 pb-20">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-foreground">ตั้งค่า</h1>
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <SettingsIcon className="w-6 h-6 text-primary" />
+          <h1 className="text-xl font-bold text-foreground">ตั้งค่าระบบ</h1>
+        </div>
         {saving && (
           <div className="flex items-center gap-1.5 text-xs text-primary">
             <div className="animate-spin rounded-full h-3 w-3 border-2 border-primary border-t-transparent" />
@@ -197,6 +201,7 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+      <p className="text-sm text-muted-foreground mb-4">จัดการวงรอบงวด งบประมาณ และจัดการหนี้สินของคุณ</p>
 
       {/* Salary Day — defines budget cycle boundary */}
       <div className="mb-6">
