@@ -7,6 +7,7 @@ import { format, differenceInDays, addDays } from 'date-fns'
 
 export type DailySpendingDatum = {
   day: number
+  label: string  // e.g. "27/2", "1/3" — actual calendar date
   expense: number
   income?: number
 }
@@ -40,7 +41,7 @@ export function getDailySpendingForPeriod(
     const income = dayTransactions
       .filter((t) => t.type === 'income')
       .reduce((sum, t) => sum + Number(t.amount), 0)
-    result.push({ day: i + 1, expense, income })
+    result.push({ day: i + 1, label: `${d.getDate()}/${d.getMonth() + 1}`, expense, income })
   }
 
   return result
