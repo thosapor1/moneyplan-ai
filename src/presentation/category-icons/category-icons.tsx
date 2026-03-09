@@ -59,6 +59,7 @@ export const CATEGORY_TO_ICON_KEY: Record<string, IconKey> = {
   อื่นๆ: "other",
 
   // Legacy category names (backward compat for existing DB data)
+  ค่าอาหาร: "food",
   ค่าเดินทาง: "transit",
   "ที่พัก/ค่าเช่า": "home",
   "ที่พัก / ค่าเช่า": "home",
