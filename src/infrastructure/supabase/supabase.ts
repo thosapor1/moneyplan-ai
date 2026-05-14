@@ -91,6 +91,19 @@ export type CategoryBudgetRow = {
   updated_at?: string
 }
 
+export type ExpenseCategoryKind = 'fixed' | 'variable'
+
+export type ExpenseCategoryRow = {
+  id: string
+  /** NULL = global default; otherwise per-user override */
+  user_id: string | null
+  name: string
+  kind: ExpenseCategoryKind
+  icon_key: string
+  sort_order: number
+  is_hidden: boolean
+}
+
 export type DebtItemRow = {
   id: string
   user_id: string
@@ -165,6 +178,53 @@ export async function saveCategoryBudgets(
   }
 
   return { error: null }
+}
+
+/**
+ * Load the user's effective expense-category list.
+ *
+ * - Reads global defaults (user_id IS NULL) + the user's per-user rows.
+ * - User rows override global rows of the same name.
+ * - Hidden rows are excluded.
+ * - Returns rows sorted by sort_order, then name.
+ *
+ * If the table does not exist yet (migration 007 not applied), returns null
+ * so callers can fall back to a hardcoded default list and keep the app
+ * working through the rollout window.
+ */
+export async function fetchExpenseCategories(
+  userId: string
+): Promise<ExpenseCategoryRow[] | null> {
+  const { data, error } = await supabase
+    .from('expense_categories')
+    .select('id, user_id, name, kind, icon_key, sort_order, is_hidden')
+    .or(`user_id.is.null,user_id.eq.${userId}`)
+    .eq('is_hidden', false)
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true })
+
+  if (error) {
+    // Code 42P01 = undefined_table (migration not applied yet)
+    const code = (error as { code?: string } | null)?.code
+    if (code === '42P01' || /relation .* does not exist/i.test(error.message ?? '')) {
+      return null
+    }
+    console.error('fetchExpenseCategories:', error)
+    return null
+  }
+
+  const byName = new Map<string, ExpenseCategoryRow>()
+  for (const row of (data ?? []) as ExpenseCategoryRow[]) {
+    const existing = byName.get(row.name)
+    // user-specific row wins over the global row of the same name
+    if (!existing || (existing.user_id == null && row.user_id != null)) {
+      byName.set(row.name, row)
+    }
+  }
+  return Array.from(byName.values()).sort((a, b) => {
+    if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
+    return a.name.localeCompare(b.name)
+  })
 }
 
 export async function fetchDebtItems(userId: string): Promise<DebtItemRow[]> {

@@ -70,7 +70,58 @@ export const CATEGORY_TO_ICON_KEY: Record<string, IconKey> = {
   สาธารณูปโภค: "utilities",
   "โทรศัพท์/อินเทอร์เน็ต": "phone",
   "โทรศัพท์ / อินเทอร์เน็ต": "phone",
+
+  // Sub-categories from KBank statement parser (matches migration 007 seed)
+  อาหารร้าน: "food",
+  "อาหารร้าน (QR)": "food",
+  ฟู้ดเดลิเวอรี่: "food",
+  คาเฟ่: "food",
+  ร้านสะดวกซื้อ: "food",
+  "BTS Rabbit Card": "transit",
+  "ช้อปปิ้ง/ของใช้": "shopping",
+  "ช้อปปิ้ง / ของใช้": "shopping",
+  "มือถือ (AIS)": "phone",
+  "TrueMoney (auto-debit)": "utilities",
+  บิลอื่นๆ: "utilities",
+  "หนี้ TTB Cash Card": "debt",
+  "หนี้บัตรเครดิต KBank": "debt",
+  "ค่าบ้าน+เงินเก็บ (เมีย)": "home",
+  โอนไปบัญชีตัวเอง: "savings",
+  โอนให้คน: "other",
+  ถอนเงินสด: "other",
 };
+
+/**
+ * Runtime registry for DB-sourced category icon overrides.
+ * The hook `useExpenseCategories` populates this once the list is fetched, so
+ * `getCategoryIconKey` resolves new DB-added categories without code changes.
+ */
+const RUNTIME_ICON_REGISTRY = new Map<string, IconKey>();
+
+const VALID_ICON_KEYS = new Set<IconKey>([
+  "food", "transit", "home", "utilities", "health", "entertainment",
+  "education", "shopping", "phone", "debt", "investment", "savings", "other",
+  "income_briefcase", "income_trending", "income_bonus", "income_dividend",
+  "income_interest", "income_other", "fallback",
+]);
+
+/** Register an icon_key override for a category name (called by the hook). */
+export function registerCategoryIcon(name: string, iconKey: string): void {
+  const normalized = normalizeCategoryKey(name);
+  if (!normalized) return;
+  if (VALID_ICON_KEYS.has(iconKey as IconKey)) {
+    RUNTIME_ICON_REGISTRY.set(normalized, iconKey as IconKey);
+  } else {
+    RUNTIME_ICON_REGISTRY.set(normalized, "other");
+  }
+}
+
+/** Bulk-register category → icon_key overrides. */
+export function registerCategoryIcons(
+  entries: ReadonlyArray<{ name: string; icon_key: string }>,
+): void {
+  entries.forEach((e) => registerCategoryIcon(e.name, e.icon_key));
+}
 
 /** Icon key → Tailwind bg class + emoji (matching clarity-finance-hub style). */
 export const CATEGORY_STYLE: Record<IconKey, { bg: string; icon: string; emoji: string }> = {
@@ -106,6 +157,11 @@ export function getCategoryIconKey(category: string): IconKey {
   // IMPORTANT: data from DB/user input may contain leading/trailing spaces or invisible chars.
   // Always normalize before lookup so icons don't "disappear" in production for certain categories.
   const normalized = normalizeCategoryKey(category);
+
+  // Runtime registry (DB-sourced) takes precedence over the hardcoded map so
+  // categories added in the DB after deploy still resolve correctly.
+  const runtime = RUNTIME_ICON_REGISTRY.get(normalized);
+  if (runtime != null) return runtime;
 
   const key = CATEGORY_TO_ICON_KEY[normalized];
   if (key != null) return key;

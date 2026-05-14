@@ -25,4 +25,5 @@ export {
   type VariableCategory,
   type TransactionLike,
   type ForecastResult,
+  type ExpenseCategoryClassification,
 } from "../src/domain/forecast/forecast";

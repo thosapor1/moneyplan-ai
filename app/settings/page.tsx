@@ -18,15 +18,15 @@ import BottomNavigation from '@/components/BottomNavigation'
 import { SettingsIcon } from '@/components/icons'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { EXPENSE_CATEGORIES } from '@/lib/storage'
 import { getActiveMonthRange } from '@/lib/period'
-import { getExpenseCategoryType } from '@/lib/forecast'
 import { formatCycleLabel } from '@/src/domain/budget/budget-cycle'
+import { useExpenseCategories } from '@/src/presentation/categories/use-expense-categories'
 
 const formatCurrency = (n: number) => n.toLocaleString('th-TH')
 
 export default function SettingsPage() {
   const router = useRouter()
+  const { categories: expenseCategories } = useExpenseCategories()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [profile, setProfile] = useState<Profile>({
@@ -246,14 +246,14 @@ export default function SettingsPage() {
         <h3 className="font-semibold text-foreground mb-3">งบประมาณต่อหมวดหมู่</h3>
         <Card className="shadow-card border-0">
           <CardContent className="p-0">
-            {EXPENSE_CATEGORIES.map((cat, i) => {
+            {expenseCategories.map((category, i) => {
+              const cat = category.name
               const value = categoryBudgets[cat] ?? 0
-              const tagType = getExpenseCategoryType(cat)
-              const frequency = tagType === 'fixed' ? 'รายเดือน' : 'รายวัน'
+              const frequency = category.kind === 'fixed' ? 'รายเดือน' : 'รายวัน'
               return (
                 <div
                   key={cat}
-                  className={`flex items-center px-4 py-3 ${i !== EXPENSE_CATEGORIES.length - 1 ? 'border-b border-border' : ''}`}
+                  className={`flex items-center px-4 py-3 ${i !== expenseCategories.length - 1 ? 'border-b border-border' : ''}`}
                 >
                   <span className="flex-1 text-sm text-foreground">{cat}</span>
                   <Badge variant="secondary" className="text-[10px] mr-3">{frequency}</Badge>

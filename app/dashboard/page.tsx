@@ -42,6 +42,7 @@ import {
   computePlannedRemaining,
   computeForecastEnd,
 } from "@/src/domain/forecast/forecast";
+import { useExpenseCategories } from "@/src/presentation/categories/use-expense-categories";
 import { getDailySpendingForPeriod } from "@/lib/chart-data";
 import { getIncludeCarriedOver, setIncludeCarriedOver } from "@/lib/storage";
 import CategoryIcon from "@/components/CategoryIcon";
@@ -62,6 +63,9 @@ const formatCurrency = (n: number) => n.toLocaleString("th-TH");
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { fixed: fixedCategoryRows, variable: variableCategoryRows } = useExpenseCategories();
+  const fixedCategoryNames = fixedCategoryRows.map((c) => c.name);
+  const variableCategoryNames = variableCategoryRows.map((c) => c.name);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
@@ -257,8 +261,8 @@ export default function DashboardPage() {
     category: t.category ?? undefined,
     date: t.date,
   }));
-  const variableDailyRate = computeVariableDailyRate(txLike, now);
-  const plannedRemaining = computePlannedRemaining(txLike, now, monthRange.start, monthRange.end);
+  const variableDailyRate = computeVariableDailyRate(txLike, now, variableCategoryNames);
+  const plannedRemaining = computePlannedRemaining(txLike, now, monthRange.start, monthRange.end, fixedCategoryNames);
   const forecast = computeForecastEnd(currentBalance, variableDailyRate, plannedRemaining, remainingDays);
   const projectedBalance = forecast.forecastEnd;
   const daysLeft = variableDailyRate > 0 ? currentBalance / variableDailyRate : currentBalance >= 0 ? Infinity : 0;

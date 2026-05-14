@@ -25,6 +25,7 @@ import {
   computePlannedRemaining,
   computeForecastEnd,
   type ForecastResult,
+  type ExpenseCategoryClassification,
 } from '../../domain/forecast/forecast'
 import {
   type BudgetCycle,
@@ -60,6 +61,12 @@ export type BudgetServiceInput = {
    * Pass 0 when not applicable.
    */
   carryForwardAmount: number
+  /**
+   * Optional override for the fixed/variable classification. Pass this when
+   * the caller has loaded the live category list from the DB; omit to fall
+   * back to the seeded defaults in `forecast.ts`.
+   */
+  categoryClassification?: ExpenseCategoryClassification
 }
 
 export type BudgetCycleResult = {
@@ -122,6 +129,7 @@ export function computeBudgetCycleResult(input: BudgetServiceInput): BudgetCycle
     transactions,
     carryForwardEnabled,
     carryForwardAmount,
+    categoryClassification,
   } = input
 
   // ── 1. Resolve cycle date window ─────────────────────────────────────────
@@ -169,12 +177,17 @@ export function computeBudgetCycleResult(input: BudgetServiceInput): BudgetCycle
   // ── 9. End-of-cycle forecast ──────────────────────────────────────────────
   // Variable daily rate uses last 14 days across all transactions (may span cycles).
   // Planned remaining is anchored to the CURRENT CYCLE window — not calendar month.
-  const variableDailyRate = computeVariableDailyRate(transactions, today)
+  const variableDailyRate = computeVariableDailyRate(
+    transactions,
+    today,
+    categoryClassification?.variable,
+  )
   const plannedRemaining = computePlannedRemaining(
     transactions,
     today,
     cycleRange.start,
     cycleRange.end,
+    categoryClassification?.fixed,
   )
   const forecast = computeForecastEnd(currentBalance, variableDailyRate, plannedRemaining, daysLeft)
 

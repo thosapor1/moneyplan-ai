@@ -26,7 +26,10 @@ Clean Architecture: `src/domain` → `src/application` → `src/infrastructure` 
 ## No New DB Tables Needed
 Budget cycles are derived/computed — not stored. `month_end_day` column (migration 002) is sufficient.
 
-## Thai UI conventions
-- All categories in Thai: อาหาร, เดินทาง, ช้อปปิ้ง, บิล/ค่าใช้จ่าย, สุขภาพ, บันเทิง, การศึกษา, ผ่อนชำระหนี้, ออมเงิน, ลงทุน, อื่นๆ
-- Fixed categories: บิล/ค่าใช้จ่าย, ผ่อนชำระหนี้, ออมเงิน, ลงทุน
-- Variable categories: อาหาร, เดินทาง, ช้อปปิ้ง, สุขภาพ, บันเทิง, การศึกษา, อื่นๆ
+## Expense Categories (DB-driven, migration 007)
+Categories now live in `public.expense_categories` (migration `007_create_expense_categories.sql`). Loaded via `fetchExpenseCategories(userId)` → hook `useExpenseCategories()` (cached at module scope, falls back to seed defaults if table missing).
+- Domain helpers (`getExpenseCategoryType`, `computeVariableDailyRate`, `computePlannedRemaining`) now accept an optional category list / classification — pure-domain default falls back to the seed constants in `src/domain/forecast/forecast.ts`.
+- Icons resolve via a runtime registry (`registerCategoryIcons` in `src/presentation/category-icons/category-icons.tsx`) populated by the hook — new DB categories get icons without a code change.
+- Seed list = 27 categories (11 original + 16 from `scripts/parse-kbank-statement.mjs` auto-categorizer): food sub-cats (อาหารร้าน, อาหารร้าน (QR), ฟู้ดเดลิเวอรี่, คาเฟ่, ร้านสะดวกซื้อ), transit (BTS Rabbit Card), bills (TrueMoney auto-debit, มือถือ AIS, บิลอื่นๆ), debts (หนี้ TTB Cash Card, หนี้บัตรเครดิต KBank), transfers/cash (โอนให้คน, โอนไปบัญชีตัวเอง, ถอนเงินสด), spouse home savings (ค่าบ้าน+เงินเก็บ (เมีย)), shopping (ช้อปปิ้ง/ของใช้).
+- Migration must be applied manually in Supabase Dashboard > SQL Editor. App works without it (falls back to hardcoded seeds in `src/presentation/categories/expense-category-defaults.ts`).
+- Diagnostic script: `SUPABASE_SERVICE_ROLE_KEY=... node scripts/list-db-categories.mjs` lists distinct category values in transactions/budgets and flags novel names.

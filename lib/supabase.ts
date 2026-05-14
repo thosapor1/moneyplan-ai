@@ -26,4 +26,7 @@ export {
   insertDebtItem,
   updateDebtItem,
   deleteDebtItem,
+  fetchExpenseCategories,
+  type ExpenseCategoryRow,
+  type ExpenseCategoryKind,
 } from "../src/infrastructure/supabase/supabase";

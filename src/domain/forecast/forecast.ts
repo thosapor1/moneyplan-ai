@@ -18,28 +18,63 @@
  * - UI state
  */
 
+/**
+ * Default category classification (seed list — matches migration 007 seed).
+ *
+ * The app prefers the DB-backed `expense_categories` table (via
+ * `fetchExpenseCategories` / `useExpenseCategories`). These constants are the
+ * fallback used:
+ * - in tests (so the test corpus stays small and stable),
+ * - by pure-domain callers that have no I/O context,
+ * - and at app startup before the first fetch settles.
+ *
+ * Callers that have access to the live category list should pass it explicitly
+ * to the helpers below, which keeps this domain module free of infrastructure
+ * dependencies.
+ */
 export const FIXED_EXPENSE_CATEGORIES = [
   'บิล/ค่าใช้จ่าย',
+  'มือถือ (AIS)',
+  'TrueMoney (auto-debit)',
+  'บิลอื่นๆ',
   'ผ่อนชำระหนี้',
+  'หนี้ TTB Cash Card',
+  'หนี้บัตรเครดิต KBank',
   'ออมเงิน',
+  'ค่าบ้าน+เงินเก็บ (เมีย)',
+  'โอนไปบัญชีตัวเอง',
   'ลงทุน',
 ] as const
 
 export const VARIABLE_EXPENSE_CATEGORIES = [
   'ค่าอาหาร',
+  'อาหารร้าน',
+  'อาหารร้าน (QR)',
+  'ฟู้ดเดลิเวอรี่',
+  'คาเฟ่',
+  'ร้านสะดวกซื้อ',
   'ค่าเดินทาง',
+  'BTS Rabbit Card',
   'ช้อปปิ้ง',
+  'ช้อปปิ้ง/ของใช้',
   'ค่าสุขภาพ',
   'ค่าบันเทิง',
   'ค่าการศึกษา',
+  'โอนให้คน',
+  'ถอนเงินสด',
   'อื่นๆ',
 ] as const
 
 export type FixedCategory = (typeof FIXED_EXPENSE_CATEGORIES)[number]
 export type VariableCategory = (typeof VARIABLE_EXPENSE_CATEGORIES)[number]
 
-const FIXED_SET = new Set<string>(FIXED_EXPENSE_CATEGORIES)
-const VARIABLE_SET = new Set<string>(VARIABLE_EXPENSE_CATEGORIES)
+export type ExpenseCategoryClassification = {
+  fixed: readonly string[]
+  variable: readonly string[]
+}
+
+const DEFAULT_FIXED_SET = new Set<string>(FIXED_EXPENSE_CATEGORIES)
+const DEFAULT_VARIABLE_SET = new Set<string>(VARIABLE_EXPENSE_CATEGORIES)
 
 /**
  * Maps legacy category names to current canonical names.
@@ -74,11 +109,21 @@ export type TransactionLike = {
   date: string
 }
 
-/** Returns 'fixed' | 'variable' for expense categories; null for income/unknown. */
-export function getExpenseCategoryType(category: string): 'fixed' | 'variable' | null {
+/**
+ * Returns 'fixed' | 'variable' for expense categories; null for income/unknown.
+ *
+ * Pass `classification` when working with the DB-driven category list. Falls
+ * back to the module defaults (seed list) when omitted.
+ */
+export function getExpenseCategoryType(
+  category: string,
+  classification?: ExpenseCategoryClassification
+): 'fixed' | 'variable' | null {
   const cat = (category ?? '').trim()
-  if (FIXED_SET.has(cat)) return 'fixed'
-  if (VARIABLE_SET.has(cat)) return 'variable'
+  const fixedSet = classification ? new Set(classification.fixed) : DEFAULT_FIXED_SET
+  const variableSet = classification ? new Set(classification.variable) : DEFAULT_VARIABLE_SET
+  if (fixedSet.has(cat)) return 'fixed'
+  if (variableSet.has(cat)) return 'variable'
   return null
 }
 
@@ -125,9 +170,14 @@ function parseDateStr(s: string): Date {
  * - If we have at least 3 distinct days, use median (robust to spikes).
  * - Otherwise fall back to mean (or 0 if no values).
  */
-export function computeVariableDailyRate(transactions: TransactionLike[], today: Date): number {
+export function computeVariableDailyRate(
+  transactions: TransactionLike[],
+  today: Date,
+  variableCategories: readonly string[] = VARIABLE_EXPENSE_CATEGORIES
+): number {
+  const variableSet = new Set<string>(variableCategories)
   const expenseOnly = transactions.filter(
-    (t) => t.type === 'expense' && t.category != null && VARIABLE_SET.has(normalizeCat(t.category))
+    (t) => t.type === 'expense' && t.category != null && variableSet.has(normalizeCat(t.category))
   )
 
   const end = toDateOnly(today)
@@ -161,7 +211,8 @@ export function computePlannedRemaining(
   transactions: TransactionLike[],
   today: Date,
   periodStart: Date,
-  periodEnd: Date
+  periodEnd: Date,
+  fixedCategories: readonly string[] = FIXED_EXPENSE_CATEGORIES
 ): number {
   const todayStr = toDateStr(today)
   const periodStartStr = toDateStr(periodStart)
@@ -173,7 +224,7 @@ export function computePlannedRemaining(
 
   let total = 0
 
-  for (const cat of FIXED_EXPENSE_CATEGORIES) {
+  for (const cat of fixedCategories) {
     const historical = transactions.filter(
       (t) =>
         t.type === 'expense' &&

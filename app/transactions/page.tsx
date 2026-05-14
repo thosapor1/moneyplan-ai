@@ -9,7 +9,7 @@ import CategoryIcon from '@/components/CategoryIcon'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { format } from 'date-fns'
-import { EXPENSE_CATEGORIES, getVisibleCategories, setVisibleCategories } from '@/lib/storage'
+import { getVisibleCategories, setVisibleCategories } from '@/lib/storage'
 import {
   getMonthRange,
   computeSpentByCategory,
@@ -18,7 +18,8 @@ import {
 } from '@/lib/finance'
 import { getCategoryEmoji } from '@/lib/category-icons'
 import { getActivePeriodMonth, getRemainingDaysInPeriod } from '@/lib/period'
-import { getExpenseCategoryType, VARIABLE_EXPENSE_CATEGORIES } from '@/lib/forecast'
+import { getExpenseCategoryType } from '@/lib/forecast'
+import { useExpenseCategories } from '@/src/presentation/categories/use-expense-categories'
 
 const formatCurrency = (n: number) => n.toLocaleString('th-TH')
 
@@ -48,7 +49,12 @@ export default function TransactionsPage() {
   const incomeCategories = [
     'เงินเดือน', 'โบนัส', 'รายได้เสริม', 'เงินปันผล', 'ดอกเบี้ย', 'รายได้อื่นๆ',
   ]
-  const expenseCategories = [...EXPENSE_CATEGORIES]
+  const { names: expenseCategories, variable: variableCategoryRows, fixed: fixedCategoryRows } = useExpenseCategories()
+  const variableCategoryNames = variableCategoryRows.map((c) => c.name)
+  const categoryClassification = {
+    fixed: fixedCategoryRows.map((c) => c.name),
+    variable: variableCategoryNames,
+  }
   const UNKNOWN_CATEGORY_LABEL = 'ไม่ระบุหมวด'
 
   const loadProfileAndBudgets = useCallback(async () => {
@@ -149,8 +155,8 @@ export default function TransactionsPage() {
   }))
   const spentByCategory = computeSpentByCategory(transactionsAsLike, monthRange)
   const remainingByCategory = computeRemainingBudgetByCategory(categoryBudgets, spentByCategory)
-  const dailyBudget = computeDailyBudgetFromRemaining(remainingByCategory, remainingDays, VARIABLE_EXPENSE_CATEGORIES)
-  const totalVariableRemaining = VARIABLE_EXPENSE_CATEGORIES.reduce((s, cat) => s + (remainingByCategory[cat] ?? 0), 0)
+  const dailyBudget = computeDailyBudgetFromRemaining(remainingByCategory, remainingDays, variableCategoryNames)
+  const totalVariableRemaining = variableCategoryNames.reduce((s, cat) => s + (remainingByCategory[cat] ?? 0), 0)
 
   const isTodayInRange = todayStr >= format(monthRange.start, 'yyyy-MM-dd') && todayStr <= format(monthRange.end, 'yyyy-MM-dd')
 
@@ -351,7 +357,7 @@ export default function TransactionsPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-medium text-foreground truncate">{tx.category || '-'}</p>
-                            {tx.type === 'expense' && getExpenseCategoryType(tx.category || '') === 'fixed' && (
+                            {tx.type === 'expense' && getExpenseCategoryType(tx.category || '', categoryClassification) === 'fixed' && (
                               <Badge variant="secondary" className="text-[10px] px-1.5 py-0">คงที่</Badge>
                             )}
                           </div>

@@ -21,5 +21,7 @@ export {
   getCategoryEmoji,
   getCategoryIconKey,
   getCategoryIconStyle,
+  registerCategoryIcon,
+  registerCategoryIcons,
   type IconKey,
 } from "../src/presentation/category-icons/category-icons";
